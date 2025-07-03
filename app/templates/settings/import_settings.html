@@ -10,7 +10,7 @@
             <label for="sync_interval_minutes">Імпорт XML оновлюється кожні (хвилин):</label>
             <input type="number" name="sync_interval_minutes" id="sync_interval_minutes" 
                    value="{{ import_settings.sync_interval_minutes }}" 
-                   min="1" max="1440" required>
+                   min="30" max="1440" required>
             <small>Можна вказати значення від 1 до 1440 хвилин.</small>
         </div>
         <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px;">

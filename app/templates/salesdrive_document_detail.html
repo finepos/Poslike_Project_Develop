@@ -3,6 +3,7 @@
 
 {% block content %}
 <style>
+    /* Існуючі стилі залишаються без змін */
     table tbody tr:hover {
         background-color: #f5f5f5 !important;
     }
@@ -33,19 +34,40 @@
     .action-btn:hover {
         background-color: #0056b3;
     }
+    .bulk-actions-wrapper {
+        display: flex; 
+        justify-content: flex-end; 
+        align-items: baseline; 
+        gap: 10px; 
+        height: 38px;
+    }
 </style>
 
 {% if document %}
     <h1>Прихідна накладна №{{ document.get('id', 'N/A') }} від {{ document.get('date', 'N/A').split(' ')[0].split('-')|reverse|join('.') }}</h1>
 
-    <div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">
-        <a href="{{ url_for('main.salesdrive_index') }}" class="button button-secondary">&larr; Повернутися до списку</a>
-        <button type="button" class="button print-btn" data-doc-id="{{ document.get('id') }}">Друкувати накладну</button>
+    <div style="margin: 20px 0; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="{{ url_for('main.salesdrive_index') }}" class="button button-secondary">&larr; Повернутися до списку</a>
+            <button type="button" class="button print-btn" data-doc-id="{{ document.get('id') }}">Друкувати накладну</button>
+        </div>
+        
+        <div class="bulk-actions-wrapper">
+            <div id="bulkActionsContainer" style="display: none; gap: 10px; flex-wrap: nowrap; align-items: baseline;">
+                <select name="action" id="bulkActionSelect" style="height: 38px;" form="bulkActionForm">
+                    <option value="export_xls" data-btn-text="Експорт XLS">Експорт XLS</option>
+                </select>
+                <button type="submit" id="bulkActionButton" class="button" style="min-width: 150px;" form="bulkActionForm">Експорт XLS</button>
+            </div>
+        </div>
     </div>
+    
+    <form method="POST" action="{{ url_for('main.salesdrive_export_xls') }}" id="bulkActionForm"></form>
 
     <table>
         <thead>
             <tr>
+                <th style="width: 30px; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Обрати всі"></th>
                 <th style="width: 15%;">SKU</th>
                 <th>Назва товару</th>
                 <th class="numeric-col-header">К-сть</th>
@@ -57,11 +79,20 @@
         <tbody>
         {% for item in document.get('documentItems', []) %}
             <tr>
+                {% set item_json = {
+                    'sku': item.get('product', {}).get('sku', 'N/A'),
+                    'name': item.get('product', {}).get('nameTranslate', item.get('description', 'N/A')),
+                    'quantity': (item.get('count')|float)|int,
+                    'price': item.get('price', 0)|float
+                } | tojson %}
+                <td style="text-align: center;">
+                    <input type="checkbox" name="selected_products" class="product-checkbox" value='{{ item_json }}' form="bulkActionForm">
+                </td>
                 <td>{{ item.get('product', {}).get('sku', 'N/A') }}</td>
                 <td>{{ item.get('product', {}).get('nameTranslate', item.get('description', 'N/A')) }}</td>
                 <td class="numeric-col">{{ (item.get('count')|float)|int }} {{ item.get('unit', {}).get('title', '') }}</td>
-                <td class="numeric-col">{{ ("%.2f"|format(item.get('price')|float)).replace('.', ',') if item.get('price') else '0,00' }}</td>
-                <td class="numeric-col">{{ ("%.2f"|format(item.get('sum')|float)).replace('.', ',') if item.get('sum') else '0,00' }}</td>
+                <td class="numeric-col convertible-price" data-base-price="{{ item.get('price', 0)|float }}">{{ ("%.4f"|format(item.get('price')|float)).replace('.', ',') }}</td>
+                <td class="numeric-col convertible-price" data-base-price="{{ item.get('sum', 0)|float }}">{{ ("%.2f"|format(item.get('sum')|float)).replace('.', ',') }}</td>
                 <td class="actions-cell">
                     <button type="button" class="action-btn"
                             onclick="openSingleItemPrintModal(this)"
@@ -75,7 +106,7 @@
             </tr>
         {% else %}
             <tr>
-                <td colspan="6" style="text-align: center;">Товари в цьому документі відсутні.</td>
+                <td colspan="7" style="text-align: center;">Товари в цьому документі відсутні.</td>
             </tr>
         {% endfor %}
         </tbody>
@@ -89,30 +120,54 @@
 {% include 'components/modals.html' %}
 {% include 'components/salesdrive_print_modal.html' %}
 
-
 {% endblock %}
 
 {% block scripts %}
-{% include 'components/salesdrive_scripts.html' %} 
+{% include 'components/salesdrive_scripts.html' %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const productCheckboxes = document.querySelectorAll('.product-checkbox');
+    const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+    const bulkActionSelect = document.getElementById('bulkActionSelect');
+    const bulkActionButton = document.getElementById('bulkActionButton');
 
+    function toggleBulkActions() {
+        const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
+        if(bulkActionsContainer) {
+            bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
+        }
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', (e) => {
+            productCheckboxes.forEach(cb => cb.checked = e.target.checked);
+            toggleBulkActions();
+        });
+    }
+
+    productCheckboxes.forEach(cb => {
+        cb.addEventListener('change', toggleBulkActions);
+    });
+    
+    if(bulkActionSelect) {
+        bulkActionSelect.addEventListener('change', () => {
+            if (bulkActionButton) {
+                 bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText;
+            }
+        });
+    }
+});
+</script>
 <script>
 function closePrintModal() {
     const modalOverlay = document.getElementById('printModalOverlay');
-    if (modalOverlay) {
-        modalOverlay.style.display = 'none';
-    }
+    if (modalOverlay) modalOverlay.style.display = 'none';
 }
 
 function openSingleItemPrintModal(button) {
-    const productData = {
-        sku: button.dataset.sku,
-        name: button.dataset.name,
-        price: button.dataset.price,
-        url: button.dataset.url
-    };
-
+    const productData = { sku: button.dataset.sku, name: button.dataset.name, price: button.dataset.price, url: button.dataset.url };
     const printers = JSON.parse('{{ printers_json|safe }}');
-    
     const modalOverlay = document.getElementById('printModalOverlay');
     const modalTitle = document.getElementById('modalPrintTitle');
     const modalProductInfo = document.getElementById('modalProductInfo');
@@ -129,30 +184,19 @@ function openSingleItemPrintModal(button) {
     modalProductInfo.style.display = 'block';
     modalProductSku.textContent = productData.sku;
     modalProductName.textContent = productData.name;
-    printersContainer.innerHTML = ''; 
+    printersContainer.innerHTML = '';
     printersContainer.style.cssText = 'display: flex; gap: 15px; align-items: stretch; flex-wrap: wrap;';
 
     if (printers.length > 0) {
         printers.forEach((printer, index) => {
             const form = document.createElement('form');
             form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
-            
             form.onsubmit = (event) => submitPrintJob(event, "{{ url_for('main.execute_print') }}");
-
             form.innerHTML = `
                 <div style="flex-grow: 1;">
-                    <input type="hidden" name="sku" value="${productData.sku}">
-                    <input type="hidden" name="name" value="${productData.name}">
-                    <input type="hidden" name="price" value="${productData.price}">
-                    <input type="hidden" name="product_url" value="${productData.url}">
-                    <input type="hidden" name="printer_id" value="${printer.id}">
-                    <input type="hidden" name="display_currency" class="display-currency-input" value="{{ cost_currency_code }}">
-                    
+                    <input type="hidden" name="sku" value="${productData.sku}"><input type="hidden" name="name" value="${productData.name}"><input type="hidden" name="price" value="${productData.price}"><input type="hidden" name="product_url" value="${productData.url}"><input type="hidden" name="printer_id" value="${printer.id}"><input type="hidden" name="display_currency" class="display-currency-input" value="{{ cost_currency_code }}">
                     <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">${printer.name} (${printer.label_size})</h4>
-                    <div class="form-group" style="margin-bottom: 10px;">
-                        <label>Кількість етикеток</label>
-                        <input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;">
-                    </div>
+                    <div class="form-group" style="margin-bottom: 10px;"><label>Кількість етикеток</label><input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;"></div>
                     ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>Кількість для сортування</label><input type="number" name="sorting_quantity" min="1" required class="print-input" style="height: 35px;"></div>` : ''}
                 </div>
                 <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>

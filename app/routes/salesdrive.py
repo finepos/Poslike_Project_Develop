@@ -1,6 +1,9 @@
 import requests
 import json
-from flask import render_template, current_app, flash, redirect, url_for, request, jsonify
+from flask import render_template, current_app, flash, redirect, url_for, request, jsonify, send_file
+from openpyxl import Workbook
+from io import BytesIO
+
 from . import bp
 from ..models import Setting, Printer, PrintJob
 from ..extensions import db
@@ -15,10 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 def _get_authenticated_session(force_login=False):
-    """
-    Створює та повертає автентифіковану сесію для SalesDrive.
-    Використовує збережені cookie або виконує новий вхід через Selenium за потреби.
-    """
+    # ... (код цієї функції залишається без змін) ...
     session = requests.Session()
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
@@ -95,6 +95,7 @@ def _get_authenticated_session(force_login=False):
 
 @bp.route('/salesdrive', methods=['GET'])
 def salesdrive_index():
+    # ... (код цієї функції залишається без змін) ...
     page = request.args.get('page', 1, type=int)
     printers = Printer.query.order_by(Printer.is_default.desc(), Printer.name).all()
     documents = []
@@ -144,6 +145,7 @@ def salesdrive_index():
 
 @bp.route('/salesdrive/document/<int:doc_id>')
 def salesdrive_document_detail(doc_id):
+    # ... (код цієї функції залишається без змін) ...
     try:
         printers = Printer.query.order_by(Printer.is_default.desc(), Printer.name).all()
         printers_json = json.dumps([p.to_dict() for p in printers])
@@ -201,6 +203,7 @@ def salesdrive_document_detail(doc_id):
 
 @bp.route('/salesdrive/print-invoice', methods=['POST'])
 def salesdrive_print_invoice():
+    # ... (код цієї функції залишається без змін) ...
     try:
         doc_id = request.form.get('doc_id')
         printer_id = request.form.get('printer_id')
@@ -279,3 +282,42 @@ def salesdrive_print_invoice():
     except Exception as e:
         current_app.logger.error(f"Помилка під час створення завдання на друк: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': f'Помилка сервера: {e}'}), 500
+
+
+# ▼▼▼ НОВИЙ МАРШРУТ ДЛЯ ЕКСПОРТУ В XLS ▼▼▼
+@bp.route('/salesdrive/export-xls', methods=['POST'])
+def salesdrive_export_xls():
+    selected_products_json = request.form.getlist('selected_products')
+    
+    if not selected_products_json:
+        flash('Товари для експорту не обрано.', 'warning')
+        return redirect(request.referrer)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "SalesDrive_Export"
+    ws.append(['Артикул', 'Назва товару', 'Кількість', 'Собівартість'])
+
+    for product_json_str in selected_products_json:
+        try:
+            product = json.loads(product_json_str)
+            ws.append([
+                product.get('sku'),
+                product.get('name'),
+                product.get('quantity'),
+                product.get('price')
+            ])
+        except (json.JSONDecodeError, TypeError):
+            # Пропускаємо неправильно сформовані дані
+            continue
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name='salesdrive_products.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )

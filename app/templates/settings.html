@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% block title %}Налаштування{% endblock %}
+
+{% block content %}
+<style>
+    /* ... (стилі, специфічні для settings.html, залишаються тут) ... */
+    .color-input-wrapper {
+        display: flex;
+        align-items: center;
+        border: 0px solid #ccc;
+        border-radius: 4px;
+        padding: 4px;
+        background-color: #fff;
+    }
+    .color-input-wrapper .color-swatch {
+        display: none;
+    }
+    .color-input-wrapper input[type="color"] {
+        border: none;
+        width: 100%;
+        height: 20px;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch {
+        border: none;
+        border-radius: 3px;
+    }
+</style>
+
+<h1>Налаштування</h1>
+
+{% include 'settings/import_settings.html' %}
+<hr>
+{% include 'settings/salesdrive_settings.html' %}
+<hr>
+{% include 'settings/color_settings.html' %}
+<hr>
+{% include 'settings/printer_settings.html' %}
+
+{% endblock %}
+
+{% block scripts %}
+    {% include 'settings/scripts.html' %}
+{% endblock %}

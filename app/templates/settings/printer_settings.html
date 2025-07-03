@@ -1,0 +1,81 @@
+<div style="margin-top: 40px;">
+    <h2>Налаштування принтерів</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 30px;">
+        <div style="flex: 2; min-width: 400px;">
+            <h3>Список принтерів</h3>
+            <table>
+                <tr><th>Назва</th><th>Адреса</th><th>Статус</th><th>Дії з чергою</th><th>Інші дії</th></tr>
+                {% for printer in printers %}
+                <tr>
+                    <td>
+                        {{ printer.name }}
+                        {% if printer.is_default %}<span title="Принтер за замовчуванням"> (За замовч.)</span>{% endif %}
+                        {% if printer.is_for_sorting %}<br><small style="color: #007bff;">(Для сортування)</small>{% endif %}
+                    </td>
+                    <td>{{ printer.ip_address }}:{{ printer.port }}</td>
+                    <td><span id="status-{{ printer.id }}">Невідомо</span></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('main.clear_print_queue', printer_id=printer.id) }}" onsubmit="return confirm('Очистити чергу для {{ printer.name }}?');" style="margin:0;">
+                            <button type="submit" class="button-danger" style="padding: 5px 10px;">
+                                Очистити ({{ printer.job_count }})
+                            </button>
+                        </form>
+                    </td>
+                    <td style="display:flex; gap: 5px; flex-wrap: wrap; align-items: center;">
+                        <a href="{{ url_for('main.edit_printer', id=printer.id) }}" class="button" style="padding: 5px 10px;">Редагувати</a>
+                        <button type="button" class="button button-secondary" style="padding: 5px 10px;"
+                                onclick="checkStatus({{ printer.id }})">
+                            Перевірити
+                        </button>
+                        <button type="button" class="button button-secondary" style="padding: 5px 10px;"
+                                onclick="openTestPrintModal({{ printer.id }}, {{ 'true' if printer.is_for_sorting else 'false' }})">
+                            Тест
+                        </button>
+                        <form method="POST" action="{{ url_for('main.delete_printer', id=printer.id) }}" onsubmit="return confirm('Видалити цей принтер?');" style="margin:0;">
+                            <button type="submit" class="button-danger" style="padding: 5px 10px;">Видалити</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" style="text-align:center;">Принтери не додані.</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+        <div style="flex: 1; min-width: 300px;">
+            <h3>Додати принтер</h3>
+            <form method="POST" action="{{ url_for('main.settings') }}">
+                <input type="hidden" name="form_type" value="add_printer">
+                <div class="form-group">
+                    <label for="name">Назва</label>
+                    <input type="text" name="name" id="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="ip_address">IP Адреса</label>
+                    <input type="text" name="ip_address" id="ip_address" required>
+                </div>
+                <div class="form-group">
+                    <label for="port">Порт</label>
+                    <input type="number" name="port" id="port" value="9100" required>
+                </div>
+                <div class="form-group">
+                    <label for="label_size">Розмір етикетки</label>
+                    <select name="label_size" id="label_size">
+                        <option value="58x40" selected>58x40</option>
+                        <option value="25x25">25x25</option><option value="30x20">30x20</option>
+                        <option value="40x25">40x25</option><option value="40x30">40x30</option>
+                        <option value="58x30">58x30</option><option value="100x100">100x100</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <input type="checkbox" name="is_default" id="is_default" style="width: auto; margin-right: 5px; vertical-align: middle;">
+                    <label for="is_default" style="display: inline;">Використовувати за замовчуванням</label>
+                </div>
+                <div class="form-group">
+                    <input type="checkbox" name="is_for_sorting" id="is_for_sorting" style="width: auto; margin-right: 5px; vertical-align: middle;">
+                    <label for="is_for_sorting" style="display: inline;">Принтер для сортування товарів</label>
+                </div>
+                <button type="submit">Додати принтер</button>
+            </form>
+        </div>
+    </div>
+</div>

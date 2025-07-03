@@ -1,0 +1,346 @@
+<script>
+    const colorSettings = {{ color_settings|tojson }};
+    const styleSheet = document.createElement("style");
+    let css = '';
+    colorSettings.forEach(setting => {
+        css += `tr.${setting.level_name} { background-color: ${setting.background_color}; color: ${setting.text_color}; } tr.${setting.level_name}:hover { background-color: ${setting.background_color}; opacity: 0.9; }`;
+        if (setting.level_name === 'status-critical') {
+             css += `tr.${setting.level_name} { background-color: ${setting.background_color} !important; color: ${setting.text_color} !important; } tr.${setting.level_name}:hover { background-color: ${setting.background_color} !important; opacity: 0.9; }`;
+        }
+    });
+    styleSheet.innerText = css;
+    document.head.appendChild(styleSheet);
+
+    const printers = JSON.parse('{{ printers_json|safe }}');
+    const paramFiltersData = {{ param_filters|tojson }};
+    const stockLevelFilter = '{{ stock_level_filter }}';
+    
+    const printModalOverlay = document.getElementById('printModalOverlay');
+    const goodsReceiptModal = document.getElementById('goodsReceiptModal');
+    const imageModalOverlay = document.getElementById('imageModalOverlay');
+    let printModalTimeout;
+
+    function openPrintModal(button) {
+        const tr = button.closest('tr');
+        const productSku = tr.cells[1].textContent;
+        const productName = tr.cells[2].textContent;
+        const productId = tr.querySelector('.product-checkbox').value;
+
+        document.getElementById('modalPrintTitle').textContent = 'Друк етикетки';
+        document.getElementById('modalProductInfo').style.display = 'block';
+        document.getElementById('modalProductSku').textContent = productSku;
+        document.getElementById('modalProductName').textContent = productName;
+        
+        const container = document.getElementById('modalPrintersContainer');
+        container.innerHTML = '';
+        container.style.cssText = 'display: flex; gap: 15px; align-items: stretch; flex-wrap: wrap;';
+
+        if (printers.length > 0) {
+            printers.forEach((printer, index) => {
+                const form = document.createElement('form');
+                form.onsubmit = (event) => submitSinglePrintJob(event);
+                form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
+                form.innerHTML = `
+                    <div style="flex-grow: 1;">
+                        <input type="hidden" name="product_id" value="${productId}">
+                        <input type="hidden" name="printer_id" value="${printer.id}">
+                        <input type="hidden" name="display_currency" class="display-currency-input">
+                        <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">${printer.name} (${printer.label_size})</h4>
+                        <div class="form-group" style="margin-bottom: 10px;"><label>Кількість етикеток</label><input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;"></div>
+                        ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>Кількість для сортування</label><input type="number" name="sorting_quantity" min="1" required class="print-input" style="height: 35px;"></div>` : ''}
+                    </div>
+                    <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>`;
+                container.appendChild(form);
+            });
+        } else { container.innerHTML = '<p>Принтери не налаштовані.</p>'; }
+        printModalOverlay.style.display = 'flex';
+        clearTimeout(printModalTimeout);
+        printModalTimeout = setTimeout(closePrintModal, 30000); 
+    }
+
+    function openBulkPrintModal(productIds) {
+        document.getElementById('modalPrintTitle').textContent = `Друк етикеток для ${productIds.length} товарів`;
+        document.getElementById('modalProductInfo').style.display = 'none';
+        
+        const container = document.getElementById('modalPrintersContainer');
+        container.innerHTML = '';
+        if (printers.length > 0) {
+            printers.forEach((printer, index) => {
+                const form = document.createElement('form');
+                form.onsubmit = (event) => submitBulkPrintJob(event);
+                form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
+                form.innerHTML = `
+                    <div style="flex-grow: 1;">
+                        <input type="hidden" name="product_ids" value="${productIds.join(',')}">
+                        <input type="hidden" name="printer_id" value="${printer.id}">
+                        <input type="hidden" name="display_currency" class="display-currency-input">
+                        <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px;">${printer.name} (${printer.label_size})</h4>
+                        <div class="form-group" style="margin-bottom: 10px;"><label>К-ть етикеток (для кожного)</label><input type="number" name="quantity" value="1" min="1" required style="height: 35px;"></div>
+                        ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>К-ть для сортування</label><input type="number" name="sorting_quantity" min="1" required style="height: 35px;"></div>` : ''}
+                    </div>
+                    <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>`;
+                container.appendChild(form);
+            });
+        } else { container.innerHTML = '<p>Принтери не налаштовані.</p>'; }
+        printModalOverlay.style.display = 'flex';
+        clearTimeout(printModalTimeout);
+        printModalTimeout = setTimeout(closePrintModal, 30000);
+    }
+
+    function openGoodsReceiptModal(productIds) {
+        if (goodsReceiptModal) {
+            document.getElementById('goodsReceiptProductIds').value = productIds.join(',');
+            goodsReceiptModal.style.display = 'flex';
+        }
+    }
+
+    function closeGoodsReceiptModal() { if (goodsReceiptModal) { goodsReceiptModal.style.display = 'none'; } }
+    
+    async function submitSinglePrintJob(event) { 
+        document.querySelectorAll('.display-currency-input').forEach(input => { input.value = document.getElementById('currencySelector').value; });
+        await submitPrintJob(event, "{{ url_for('main.execute_print') }}"); 
+    }
+    
+    async function submitBulkPrintJob(event) { 
+        document.querySelectorAll('.display-currency-input').forEach(input => { input.value = document.getElementById('currencySelector').value; });
+        await submitPrintJob(event, "{{ url_for('main.execute_bulk_print') }}"); 
+    }
+
+    function closePrintModal() { clearTimeout(printModalTimeout); if (printModalOverlay) printModalOverlay.style.display = 'none'; }
+    function showProductImage(src) { if(src) { document.getElementById('imageModalContent').src = src; imageModalOverlay.style.display = 'flex'; } }
+    function closeImageModal() { if (imageModalOverlay) imageModalOverlay.style.display = 'none'; }
+    
+    [printModalOverlay, imageModalOverlay, goodsReceiptModal].forEach(modal => {
+        if(modal) modal.addEventListener('click', e => { if (e.target === modal) e.target.style.display = 'none'; });
+    });
+
+    let expanded = false;
+    function toggleCategoryCheckboxes() {
+        const checkboxes = document.getElementById("categoryCheckboxes");
+        if (!expanded) {
+            checkboxes.style.display = "block";
+            expanded = true;
+        } else {
+            checkboxes.style.display = "none";
+            expanded = false;
+        }
+    }
+
+    function filterCategories() {
+        const input = document.getElementById("categorySearchInput");
+        const filter = input.value.toLowerCase();
+        const categoryList = document.getElementById("categoryList");
+        const labels = categoryList.getElementsByTagName("label");
+        for (let i = 0; i < labels.length; i++) {
+            const txtValue = labels[i].textContent || labels[i].innerText;
+            if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                labels[i].style.display = "";
+            } else {
+                labels[i].style.display = "none";
+            }
+        }
+    }
+
+    function updateCategorySelectText() {
+        const selectedCategories = [];
+        const checkboxes = document.querySelectorAll('#categoryList input[type="checkbox"]:checked');
+        checkboxes.forEach(cb => {
+            selectedCategories.push(cb.parentElement.textContent.trim());
+        });
+        
+        const textElement = document.getElementById('categorySelectText');
+        const boxElement = textElement.parentElement;
+        if (selectedCategories.length === 0) {
+            textElement.textContent = 'Всі категорії';
+            boxElement.classList.remove('has-selection');
+        } else {
+            boxElement.classList.add('has-selection');
+            if (selectedCategories.length > 2) {
+                textElement.textContent = `Обрано: ${selectedCategories.length}`;
+            } else {
+                textElement.textContent = selectedCategories.join(', ');
+            }
+        }
+    }
+
+    function checkAndLoadDynamicFilters() {
+        const paramsContainer = document.getElementById('paramFiltersContainer');
+        const stockLevelContainer = document.getElementById('stockLevelFiltersContainer');
+        const selectedCategories = document.querySelectorAll('#categoryList input[type="checkbox"]:checked');
+
+        if (paramsContainer) {
+            if ({{ show_param_filters|tojson }} ) {
+                paramsContainer.style.display = 'block';
+                const categoryNames = Array.from(selectedCategories).map(cb => cb.value);
+                updateParamFilters(categoryNames);
+            } else {
+                paramsContainer.style.display = 'none';
+                paramsContainer.innerHTML = '';
+            }
+        }
+        
+        if (selectedCategories.length > 0) {
+            stockLevelContainer.style.display = 'block';
+            updateStockLevelFilters(selectedCategories[0].value);
+        } else {
+            if (stockLevelContainer) stockLevelContainer.style.display = 'none';
+        }
+    }
+
+    async function updateParamFilters(categoryNames) {
+        const paramsContainer = document.getElementById('paramFiltersContainer');
+        if (!paramsContainer) return;
+        
+        if (categoryNames.length === 0) {
+            paramsContainer.innerHTML = '';
+            return;
+        }
+
+        paramsContainer.innerHTML = '<h4 style="margin-bottom: 10px; text-align: center;">Фільтри по параметрах <small>(завантаження...)</small></h4>';
+        
+        const queryParams = new URLSearchParams();
+        categoryNames.forEach(name => queryParams.append('category', name));
+
+        try {
+            const response = await fetch(`{{ url_for('main.get_params_for_category') }}?${queryParams.toString()}`);
+            const paramsData = await response.json();
+            
+            paramsContainer.innerHTML = '<h4 style="margin-bottom: 10px; text-align: center;">Фільтри по параметрах</h4>';
+            const filterRow = document.createElement('div');
+            filterRow.style.cssText = 'display: flex; flex-wrap: wrap; justify-content: center; gap: 15px;';
+            if (Object.keys(paramsData).length === 0) {
+                filterRow.innerHTML = '<p>Для цієї категорії немає параметрів для фільтрації.</p>';
+            } else {
+                 const sortedParamNames = Object.keys(paramsData).sort();
+                 for (const paramName of sortedParamNames) {
+                    const values = paramsData[paramName];
+                    const selectName = `param_${paramName.replace(/[\s/]+/g, '_')}`;
+                    const wrapper = document.createElement('div');
+                    wrapper.style.cssText = 'flex: 1 1 180px;';
+                    let optionsHTML = values.map(v => `<option value="${v}" ${paramFiltersData[paramName] === v ? 'selected' : ''}>${v}</option>`).join('');
+                    wrapper.innerHTML = `<label style="display: block;">${paramName}</label><select name="${selectName}" onchange="document.getElementById('mainSearchForm').submit()" form="mainSearchForm"><option value="">Всі (${paramName})</option>${optionsHTML}</select>`;
+                    filterRow.appendChild(wrapper);
+                }
+            }
+            paramsContainer.appendChild(filterRow);
+        } catch (error) { paramsContainer.innerHTML = '<h4>Фільтри по параметрах <small>(помилка завантаження)</small></h4>'; }
+    }
+
+    function updateStockLevelFilters(categoryName) {
+        const stockLevelContainer = document.getElementById('stockLevelFiltersContainer');
+        if (!stockLevelContainer) return;
+        
+        stockLevelContainer.innerHTML = '';
+        if (!categoryName) { stockLevelContainer.style.display = 'none'; return; }
+        stockLevelContainer.style.display = 'block';
+        
+        let buttonsHTML = '<h4 style="margin-bottom: 10px; text-align: center;">Фільтр по залишках</h4><div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;">';
+        const currentParams = new URLSearchParams(window.location.search);
+        colorSettings.forEach(setting => {
+            currentParams.set('stock_level', setting.level_name);
+            const isActive = stockLevelFilter === setting.level_name;
+            buttonsHTML += `<a href="?${currentParams.toString()}" class="button" style="background-color: ${setting.background_color}; color: ${setting.text_color}; border: ${isActive ? '2px solid #007bff' : '2px solid transparent'};">${setting.label}</a>`;
+        });
+        currentParams.delete('stock_level');
+        buttonsHTML += `<a href="?${currentParams.toString()}" class="button button-secondary">Всі рівні</a></div>`;
+        stockLevelContainer.innerHTML = buttonsHTML;
+    }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        const bulkActionForm = document.getElementById('bulkActionForm');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const productCheckboxes = document.querySelectorAll('.product-checkbox');
+        const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+        const bulkActionSelect = document.getElementById('bulkActionSelect');
+        const bulkActionButton = document.getElementById('bulkActionButton');
+        const stockFilterSelect = document.getElementById('stockFilterSelect');
+        
+        function toggleBulkActions() {
+            const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
+            bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
+        }
+
+        selectAllCheckbox.addEventListener('change', (e) => { productCheckboxes.forEach(cb => cb.checked = e.target.checked); toggleBulkActions(); });
+        productCheckboxes.forEach(cb => cb.addEventListener('change', toggleBulkActions));
+        bulkActionSelect.addEventListener('change', () => { bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText; });
+        
+        bulkActionForm.addEventListener('submit', (e) => {
+            const selectedAction = bulkActionSelect.value;
+            const displayCurrencyInput = document.getElementById('displayCurrencyInput');
+            if (displayCurrencyInput) { displayCurrencyInput.value = document.getElementById('currencySelector').value; }
+
+            if (selectedAction === 'print' || selectedAction === 'export_goods_receipt') {
+                e.preventDefault();
+                const selectedIds = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => cb.value);
+                if (selectedIds.length > 0) {
+                    if (selectedAction === 'print') { openBulkPrintModal(selectedIds); } 
+                    else if (selectedAction === 'export_goods_receipt') { openGoodsReceiptModal(selectedIds); }
+                } else { showToast('Необхідно обрати хоча б один товар', 'error'); }
+            }
+        });
+
+        const mainSearchForm = document.getElementById('mainSearchForm');
+        if (mainSearchForm) {
+            mainSearchForm.addEventListener('submit', function(event) {
+                const stockFilter = document.getElementById('stockFilterSelect');
+                const stockQuantity = document.getElementById('stockQuantityInput');
+
+                if (stockQuantity.value.trim() !== '' && stockFilter.value === '') {
+                    event.preventDefault();
+                    showToast('Будь ласка, оберіть тип фільтра для залишку.', 'error');
+                    stockFilter.classList.add('highlight-error');
+                    stockFilter.focus();
+                    setTimeout(() => { stockFilter.classList.remove('highlight-error'); }, 3000);
+                }
+            });
+        }
+        
+        if (stockFilterSelect) {
+            function updateStockFilterColor() {
+                if (stockFilterSelect.value) {
+                    stockFilterSelect.classList.add('has-selection');
+                } else {
+                    stockFilterSelect.classList.remove('has-selection');
+                }
+            }
+            stockFilterSelect.addEventListener('change', updateStockFilterColor);
+            updateStockFilterColor();
+        }
+
+        const searchInput = document.getElementById('searchSkuInput');
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.form = "mainSearchForm";
+            searchInput.addEventListener('keydown', function(event) { if (event.key === 'Enter') { event.preventDefault(); document.getElementById('mainSearchForm').submit(); } });
+            setInterval(() => {
+                const activeElement = document.activeElement;
+                const modals = [printModalOverlay, imageModalOverlay, document.getElementById('testPrintModalOverlay'), goodsReceiptModal];
+                const isModalOpen = modals.some(modal => modal && window.getComputedStyle(modal).display === 'flex');
+                if (!isModalOpen && activeElement !== searchInput && !['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName)) { searchInput.focus(); }
+            }, 30000);
+        }
+        
+        // --- ПОЧАТОК НОВИХ ЗМІН ---
+        // ПЕРЕМІСТІТЬ ВАШ БЛОК СЮДИ
+        const isExactSkuSearch = {{ is_exact_sku_search|tojson }};
+        if (isExactSkuSearch) {
+            console.log('Точний пошук по SKU. Запускаю 15-хвилинний таймер для очищення.');
+            setTimeout(() => {
+                // Перенаправляємо на головну сторінку без параметрів пошуку
+                window.location.href = "{{ url_for('main.index') }}";
+            }, 900000); // 15 хвилин = 900 000 мілісекунд
+        }
+        // --- КІНЕЦЬ НОВИХ ЗМІН ---
+
+        const categoryCheckboxes = document.querySelectorAll('#categoryList input[type="checkbox"]');
+        categoryCheckboxes.forEach(cb => {
+            cb.addEventListener('change', () => {
+                updateCategorySelectText();
+                checkAndLoadDynamicFilters();
+                document.getElementById('mainSearchForm').submit();
+            });
+        });
+        updateCategorySelectText();
+        checkAndLoadDynamicFilters();
+    });
+</script>

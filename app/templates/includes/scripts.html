@@ -1,0 +1,202 @@
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Скрипт для автоматичного зникнення flash-повідомлень
+        const flashes = document.querySelectorAll(".flash");
+        flashes.forEach(function(flash) {
+            setTimeout(function() {
+                flash.style.display = "none";
+            }, 5000);
+        });
+    });
+
+    // Універсальна функція для показу спливаючих повідомлень
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => { toast.classList.add('show'); }, 100);
+        setTimeout(() => { toast.classList.remove('show'); toast.addEventListener('transitionend', () => toast.remove()); }, 5000);
+    }
+
+    const testPrintModalOverlay = document.getElementById('testPrintModalOverlay');
+    
+    // Функція для відкриття модального вікна тестового друку
+    async function openTestPrintModal(printerId, isForSorting) {
+        try {
+            const response = await fetch("{{ url_for('main.get_test_product_info') }}");
+            if (!response.ok) {
+                const errorData = await response.json();
+                alert('Помилка: ' + (errorData.error || 'Не вдалося завантажити дані для тесту.'));
+                return;
+            }
+            const product = await response.json();
+
+            document.getElementById('testModalProductName').textContent = product.product_name;
+            document.getElementById('testModalProductSku').textContent = product.product_sku;
+            document.getElementById('testModalProductId').value = product.product_id;
+            document.getElementById('testModalPrinterId').value = printerId;
+            
+            const sortingGroup = document.getElementById('testSortingQuantityGroup');
+            const sortingInput = document.getElementById('testModalSortingQuantity');
+            if (isForSorting) {
+                sortingGroup.style.display = 'block';
+                sortingInput.required = true;
+            } else {
+                sortingGroup.style.display = 'none';
+                sortingInput.required = false;
+            }
+
+            if (testPrintModalOverlay) testPrintModalOverlay.style.display = 'flex';
+
+        } catch (error) {
+            console.error("Fetch error:", error);
+            alert('Сталася помилка. Перевірте консоль для деталей.');
+        }
+    }
+
+    // Функція закриття модального вікна тестового друку
+    function closeTestPrintModal() {
+        if(testPrintModalOverlay) testPrintModalOverlay.style.display = 'none';
+    }
+
+    if(testPrintModalOverlay) {
+        testPrintModalOverlay.addEventListener('click', function(event) {
+            if (event.target === testPrintModalOverlay) {
+                closeTestPrintModal();
+            }
+        });
+    }
+    
+    // Універсальна функція для відправки завдання на друк (звичаного або тестового)
+    async function submitPrintJob(event, url, isTest = false) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        const button = form.querySelector('button[type="submit"]');
+        const originalButtonText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Додаємо...';
+        try {
+            const response = await fetch(url, { method: 'POST', body: formData });
+            const result = await response.json();
+            if (response.ok) {
+                showToast(result.message, 'success');
+                if (isTest) {
+                    closeTestPrintModal();
+                } else if (typeof closePrintModal !== 'undefined') {
+                    // Закриває вікно друку, якщо відповідна функція існує
+                    closePrintModal();
+                }
+            } else {
+                showToast(result.message || 'Сталася помилка', 'error');
+            }
+        } catch (error) {
+            console.error("Print submission error:", error);
+            showToast('Не вдалося відправити запит.', 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalButtonText;
+        }
+    }
+    
+    // Функція для відправки тестового друку
+    async function submitTestPrintJob(event) {
+        event.preventDefault();
+        document.querySelectorAll('.display-currency-input').forEach(input => {
+            input.value = document.getElementById('currencySelector').value;
+        });
+        await submitPrintJob(event, "{{ url_for('main.execute_print') }}", true);
+    }
+
+    // Скрипт для роботи селектора валют
+    document.addEventListener('DOMContentLoaded', function() {
+        const currencySelector = document.getElementById('currencySelector');
+        if (currencySelector) {
+            const currencyRates = {};
+            currencySelector.querySelectorAll('option').forEach(opt => {
+                currencyRates[opt.value] = parseFloat(opt.dataset.rate);
+            });
+
+            function updatePrices(selectedCurrency, selectedRate) {
+                // Оновлюємо ціни на всіх сторінках, де є відповідний клас
+                const priceCells = document.querySelectorAll('.product-price, .convertible-price');
+                if (priceCells.length > 0) {
+                    priceCells.forEach(priceCell => {
+                        const basePriceUAH = parseFloat(priceCell.dataset.basePrice);
+                        if (!isNaN(basePriceUAH) && selectedRate > 0) {
+                            const newPrice = basePriceUAH / selectedRate;
+                            // Форматуємо з комою замість крапки
+                            priceCell.textContent = newPrice.toFixed(2).replace('.', ',');
+                        }
+                    });
+                }
+                const displayCurrencyInputs = document.querySelectorAll('.display-currency-input');
+                if (displayCurrencyInputs) {
+                    displayCurrencyInputs.forEach(input => input.value = selectedCurrency);
+                }
+            }
+
+            currencySelector.addEventListener('change', function() {
+                const selectedCurrency = this.value;
+                const selectedRate = currencyRates[selectedCurrency];
+                updatePrices(selectedCurrency, selectedRate);
+                localStorage.setItem('selectedCurrency', selectedCurrency);
+            });
+
+            const savedCurrency = localStorage.getItem('selectedCurrency');
+            if (savedCurrency && currencyRates[savedCurrency]) {
+                currencySelector.value = savedCurrency;
+                currencySelector.dispatchEvent(new Event('change'));
+            } else if (currencySelector.value) {
+                updatePrices(currencySelector.value, currencyRates[currencySelector.value]);
+            }
+        }
+    });
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Універсальна функція для обробки кнопок синхронізації
+    const handleSyncClick = async (button) => {
+        if (!button) return;
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Оновлення...';
+
+        try {
+            const response = await fetch("{{ url_for('main.sync_now') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                showToast(result.message, 'success');
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                showToast(result.message || 'Невідома помилка', 'error');
+            }
+        } catch (error) {
+            console.error('Sync error:', error);
+            showToast('Помилка з\'єднання при спробі оновлення.', 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    };
+
+    // Обробник для кнопки в хедері
+    const syncNowBtn = document.getElementById('syncNowBtn');
+    if (syncNowBtn) {
+        syncNowBtn.addEventListener('click', () => handleSyncClick(syncNowBtn));
+    }
+
+    // Обробник для кнопки на сторінці налаштувань
+    const syncNowBtnSettings = document.getElementById('syncNowBtnSettings');
+    if (syncNowBtnSettings) {
+        syncNowBtnSettings.addEventListener('click', () => handleSyncClick(syncNowBtnSettings));
+    }
+});
+</script>

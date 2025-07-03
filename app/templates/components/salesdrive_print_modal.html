@@ -1,0 +1,38 @@
+<div id="printModal" class="modal-overlay">
+    <div class="modal-content">
+        <span class="modal-close" id="closePrintModal">&times;</span>
+        <h2>Друк накладної</h2>
+        <form id="printForm">
+            <input type="hidden" name="doc_id" id="modalDocId">
+            
+            <div class="form-group">
+                <label for="printer_id">Принтер:</label>
+                <select name="printer_id" id="printer_id" required style="height: 38px;">
+                    {% for printer in printers %}
+                        <option value="{{ printer.id }}" {% if printer.is_default %}selected{% endif %}>{{ printer.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group" style="border-top: 1px solid #eee; padding-top: 15px; margin-top: 20px;">
+                <h4>Налаштування друку</h4>
+                <div style="padding: 10px 0;">
+                    <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;">
+                        <input type="radio" name="print_option" value="one_per_item" class="print-option" style="width: auto; height: auto; margin-right: 10px;">
+                        Друк цінників для всіх товарів (по 1 шт. на позицію)
+                    </label>
+                </div>
+                <div style="padding: 10px 0;">
+                    <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer;">
+                        <input type="radio" name="print_option" value="by_quantity" class="print-option" style="width: auto; height: auto; margin-right: 10px;">
+                        Друк одного цінника для кожної одиниці товару
+                    </label>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: right;">
+                <button type="submit" id="submitPrintBtn" class="button" disabled>Друк</button>
+            </div>
+        </form>
+    </div>
+</div>

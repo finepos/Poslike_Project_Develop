@@ -1,0 +1,20 @@
+<script>
+async function checkStatus(printerId) {
+    const statusEl = document.getElementById(`status-${printerId}`);
+    if (!statusEl) return;
+    
+    statusEl.textContent = 'Перевірка...';
+    statusEl.style.color = 'orange';
+
+    try {
+        const response = await fetch(`/settings/check-printer-status/${printerId}`);
+        const data = await response.json();
+        
+        statusEl.textContent = data.message;
+        statusEl.style.color = data.is_ready ? 'green' : 'red';
+    } catch (error) {
+        statusEl.textContent = 'Помилка';
+        statusEl.style.color = 'red';
+    }
+}
+</script>

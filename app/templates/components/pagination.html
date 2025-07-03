@@ -1,0 +1,46 @@
+<div class="pagination-container" style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 20px;">
+
+    {# Умова: категорія обрана І загальна кількість товарів більша, ніж на одній стандартній сторінці #}
+    {% if search_categories and pagination.total > DEFAULT_PER_PAGE %}
+
+        {# Якщо режим "Показати всі" активний, показуємо кнопку "Повернутись" #}
+        {% if request.args.get('show_all') %}
+            {% set back_args = request.args.to_dict() %}
+            {% do back_args.pop('show_all', None) %}
+            <div class="show-all-container">
+                <a href="{{ url_for('main.index', **back_args) }}" class="button button-secondary">Повернутись до сторінок</a>
+            </div>
+
+        {# В іншому випадку, показуємо кнопку "Показати всі товари" #}
+        {% else %}
+             <div class="show-all-container">
+                <a href="{{ url_for('main.index', show_all='true', **request.args) }}" class="button">Показати всі товари категорії</a>
+            </div>
+        {% endif %}
+    {% endif %}
+
+
+    <div class="pagination">
+        {# Цей блок ховає номери сторінок, коли показані всі товари #}
+        {% if pagination.total > pagination.per_page and not request.args.get('show_all') %}
+            <nav aria-label="Page navigation">
+                <ul class="pagination-list">
+                    {% for p in pagination.window %}
+                        {% if p %}
+                            <li class="page-item {% if p == pagination.page %}current{% endif %}">
+                                {# --- ПОЧАТОК ВИПРАВЛЕННЯ --- #}
+                                {# Створюємо копію аргументів і видаляємо з неї 'page', щоб уникнути конфлікту #}
+                                {% set page_args = request.args.to_dict() %}
+                                {% do page_args.pop('page', None) %}
+                                <a class="page-link" href="{{ url_for('main.index', page=p, **page_args) }}">{{ p }}</a>
+                                {# --- КІНЕЦЬ ВИПРАВЛЕННЯ --- #}
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">…</span></li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,30 @@
+<div class="header-controls">
+    <a href="{{ url_for('main.index') }}">← На головну</a>
+    
+    <div style="display: flex; gap: 15px; align-items: center;">
+        
+        <div style="display: flex; align-items: center; gap: 10px; border-right: 1px solid #ccc; padding-right: 15px;">
+            <span style="font-size: 0.9em; color: {{ '#dc3545' if sync_status.is_error else '#555' }};" title="{{ sync_status.text }}">
+                {{ sync_status.text }}
+            </span>
+            <button id="syncNowBtn" class="button" style="height: 30px; padding: 0 10px; line-height: 30px; font-size: 0.9em;">Оновити</button>
+        </div>
+
+        <a href="{{ url_for('main.salesdrive_index') }}" class="button">SalesDrive</a>
+
+        {% if 'salesdrive' not in request.endpoint %}
+        <label for="currencySelector" style="margin: 0; font-weight: normal; display: block;">Валюта:</label>
+        <select id="currencySelector" style="width: 80px; margin-bottom: 0; height: 38px; padding: 5px;">
+            {% if available_currencies %}
+                {% for currency in available_currencies %}
+                <option value="{{ currency.code }}" data-rate="{{ currency.rate }}">
+                    {{ currency.code }}
+                </option>
+                {% endfor %}
+            {% endif %}
+        </select>
+        {% endif %}
+        
+        <a href="{{ url_for('main.settings') }}" class="button button-secondary" style="height: 38px; padding: 0 15px; line-height: 38px;">Налаштування</a>
+    </div>
+</div>

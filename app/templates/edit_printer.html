@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+{% block title %}Редагування принтера{% endblock %}
+{% block content %}
+    <h1>Редагування принтера "{{ printer.name }}"</h1>
+    <div style="max-width: 800px; margin: auto; padding: 20px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px;">
+        <form method="POST">
+            <div class="form-group">
+                <label for="name">Назва</label>
+                <input type="text" name="name" id="name" value="{{ printer.name }}" required>
+            </div>
+            <div class="form-group">
+                <label for="ip_address">IP Адреса</label>
+                <input type="text" name="ip_address" id="ip_address" value="{{ printer.ip_address }}" required>
+            </div>
+            <div class="form-group">
+                <label for="port">Порт</label>
+                <input type="number" name="port" id="port" value="{{ printer.port }}" required>
+            </div>
+            <div class="form-group">
+                <label for="label_size">Розмір етикетки</label>
+                <select name="label_size" id="label_size">
+                    {% set sizes = ["25x25", "30x20", "40x25", "40x30", "58x30", "58x40", "100x100"] %}
+                    {% for size in sizes %}
+                        <option value="{{ size }}" {% if printer.label_size == size %}selected{% endif %}>{{ size }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="pause_between_jobs">Пауза між завданнями (секунди)</label>
+                <input type="number" name="pause_between_jobs" id="pause_between_jobs" value="{{ printer.pause_between_jobs or 1 }}" required min="0">
+            </div>
+            <div class="form-group">
+                <input type="checkbox" name="is_default" id="is_default" {% if printer.is_default %}checked{% endif %} style="width: auto; margin-right: 5px; vertical-align: middle;">
+                <label for="is_default" style="display: inline;">Використовувати за замовчуванням</label>
+            </div>
+            <div class="form-group">
+                <input type="checkbox" name="is_for_sorting" id="is_for_sorting" {% if printer.is_for_sorting %}checked{% endif %} style="width: auto; margin-right: 5px; vertical-align: middle;">
+                <label for="is_for_sorting" style="display: inline;">Принтер для сортування товарів</label>
+            </div>
+
+            <div class="form-group">
+                <label for="zpl_code_template">Шаблон ZPL-коду (залиште порожнім для використання стандартного)</label>
+                <textarea id="zpl_code_template" name="zpl_code_template">{{ default_template }}</textarea>
+                 <div class="zpl-help">
+                    <h3>Довідка: Параметри для друку</h3>
+                    <ul>
+                    {% for placeholder, description in placeholders.items() %}
+                        <li><strong style="font-family: monospace;">{{ '{' + placeholder + '}' }}</strong>: {{ description }}</li>
+                    {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button type="submit">Зберегти зміни</button>
+                
+                <button type="button" class="button button-secondary" 
+                        onclick="openTestPrintModal({{ printer.id }}, {{ 'true' if printer.is_for_sorting else 'false' }})">
+                    Тестовий друк
+                </button>
+            </div>
+        </form>
+    </div>
+{% endblock %}

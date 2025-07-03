@@ -1,0 +1,92 @@
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const printModal = document.getElementById('printModal');
+    if (!printModal) return;
+
+    const closePrintModalBtn = document.getElementById('closePrintModal');
+    const printForm = document.getElementById('printForm');
+    const submitPrintBtn = document.getElementById('submitPrintBtn');
+    const printOptionRadios = document.querySelectorAll('.print-option');
+
+    function openModal(docId) {
+        document.getElementById('modalDocId').value = docId;
+        printModal.style.display = 'flex';
+        // Встановлюємо фокус на перший елемент форми
+        if(printForm) {
+            const firstInput = printForm.querySelector('select, input');
+            if (firstInput) firstInput.focus();
+        }
+    }
+
+    function closeModal() {
+        printModal.style.display = 'none';
+        if(printForm) {
+            printForm.reset();
+        }
+        if(submitPrintBtn) {
+            submitPrintBtn.disabled = true;
+        }
+    }
+
+    document.querySelectorAll('.print-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            const docId = e.currentTarget.dataset.docId;
+            if (docId) {
+                openModal(docId);
+            }
+        });
+    });
+
+    if(closePrintModalBtn) {
+        closePrintModalBtn.addEventListener('click', closeModal);
+    }
+    
+    printModal.addEventListener('click', (e) => {
+        if (e.target === printModal) closeModal();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && printModal.style.display === 'flex') {
+            closeModal();
+        }
+    });
+
+    if(printOptionRadios) {
+        printOptionRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if(submitPrintBtn) submitPrintBtn.disabled = false;
+            });
+        });
+    }
+
+    if(printForm) {
+        printForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            submitPrintBtn.disabled = true;
+            submitPrintBtn.textContent = 'Обробка...';
+
+            const formData = new FormData(printForm);
+            
+            try {
+                const response = await fetch("{{ url_for('main.salesdrive_print_invoice') }}", {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    showToast(result.message, 'success');
+                    closeModal();
+                } else {
+                    showToast(result.message || 'Сталася невідома помилка', 'error');
+                }
+            } catch (error) {
+                showToast('Помилка з\'єднання.', 'error');
+            } finally {
+                submitPrintBtn.disabled = false;
+                submitPrintBtn.textContent = 'Друк';
+            }
+        });
+    }
+});
+</script>

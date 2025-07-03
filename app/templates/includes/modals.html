@@ -1,0 +1,26 @@
+<div id="testPrintModalOverlay" class="modal-overlay">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeTestPrintModal()">&times;</span>
+        <h1>Тестовий друк</h1>
+        <h3 id="testModalProductName"></h3>
+        <p><strong>SKU:</strong> <span id="testModalProductSku"></span></p>
+        
+        <form onsubmit="submitTestPrintJob(event)">
+            <input type="hidden" name="product_id" id="testModalProductId">
+            <input type="hidden" name="printer_id" id="testModalPrinterId">
+            <input type="hidden" name="display_currency" class="display-currency-input">
+            
+            <div class="form-group">
+                <label for="testModalQuantity">Кількість етикеток</label>
+                <input type="number" name="quantity" id="testModalQuantity" value="1" min="1" required>
+            </div>
+
+            <div class="form-group" id="testSortingQuantityGroup" style="display: none;">
+                <label for="testModalSortingQuantity">Кількість для сортування (напр. 200)</label>
+                <input type="number" name="sorting_quantity" id="testModalSortingQuantity" min="1">
+            </div>
+            
+            <button type="submit">Друк</button>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+{% block title %}SalesDrive - Список накладних{% endblock %}
+
+{% block content %}
+<style>
+    /* Стилі для таблиці успадковуються з layout.html */
+    table tbody tr:hover {
+        background-color: #f5f5f5 !important;
+    }
+    .actions-cell {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        align-items: center;
+    }
+    .action-btn {
+        padding: 10px 15px;
+        font-size: 1em;
+        line-height: 1.2;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        color: white;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+    }
+    .action-btn.view-btn {
+        background-color: #007bff;
+    }
+    .action-btn.view-btn:hover {
+        background-color: #0056b3;
+    }
+    .action-btn.print-btn {
+        background-color: #6c757d;
+    }
+    .action-btn.print-btn:hover {
+        background-color: #5a6268;
+    }
+    .pagination {
+        margin-top: 20px;
+        text-align: center;
+    }
+    .pagination a, .pagination span {
+        display: inline-block;
+        padding: 8px 16px;
+        margin: 0 4px;
+        border: 1px solid #ddd;
+        color: #007bff;
+        text-decoration: none;
+        border-radius: 4px;
+    }
+    .pagination a:hover {
+        background-color: #e9ecef;
+    }
+    .pagination .current {
+        background-color: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    .pagination .disabled {
+        color: #ccc;
+        pointer-events: none;
+        background-color: #f8f9fa;
+    }
+</style>
+
+<h1>Прихідні накладні SalesDrive</h1>
+
+<div style="margin: 20px 0;">
+    <a href="{{ url_for('main.salesdrive_index', page=1) }}" class="button">Оновити список (Стор. 1)</a>
+</div>
+
+{% if documents %}
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 8%;">Номер</th>
+                <th style="width: 10%;">Дата</th>
+                <th style="width: 10%;">К-ть товарів</th>
+                <th style="width: 12%;">Сума (UAH)</th>
+                <th>Коментар</th>
+                <th style="width: 20%; text-align: center;">Дії</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.get('id', 'N/A') }}</td>
+                    <td>{{ doc.get('date', 'N/A').split(' ')[0].split('-')|reverse|join('.') }}</td>
+                    <td>{{ (doc.get('totalCount')|float)|int }}</td>
+                    <td>
+                        {{ ("%.2f"|format(doc.get('totalSum')|float)).replace('.', ',') if doc.get('totalSum') else '0,00' }}
+                    </td>
+                    <td>{{ doc.get('comment') or '. . .' }}</td>
+                    <td class="actions-cell">
+                        {% if doc.get('id') %}
+                            <a href="{{ url_for('main.salesdrive_document_detail', doc_id=doc.get('id')) }}" class="action-btn view-btn">Переглянути</a>
+                            <button type="button" class="action-btn print-btn" data-doc-id="{{ doc.get('id') }}">Друкувати</button>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if pagination_info %}
+    <div class="pagination">
+        {% if pagination_info.has_prev %}
+            <a href="{{ url_for('main.salesdrive_index', page=pagination_info.current_page - 1) }}">&laquo; Попередня</a>
+        {% else %}
+            <span class="disabled">&laquo; Попередня</span>
+        {% endif %}
+        <span class="current">{{ pagination_info.current_page }}</span>
+        {% if pagination_info.has_next %}
+             <a href="{{ url_for('main.salesdrive_index', page=pagination_info.current_page + 1) }}">Наступна &raquo;</a>
+        {% else %}
+            <span class="disabled">Наступна &raquo;</span>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+{% elif documents is none %}
+    <p style="text-align: center; margin-top: 30px;">Налаштуйте інтеграцію з SalesDrive на сторінці <a href="{{ url_for('main.settings') }}">налаштувань</a>.</p>
+{% else %}
+    <p style="text-align: center; margin-top: 30px;">Документи не знайдено. Натисніть "Оновити список", щоб завантажити дані.</p>
+{% endif %}
+
+{% include 'components/salesdrive_print_modal.html' %}
+{% endblock %}
+
+{% block scripts %}
+{% include 'components/salesdrive_scripts.html' %}
+{% endblock %}

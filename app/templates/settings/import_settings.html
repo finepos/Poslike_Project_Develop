@@ -1,0 +1,26 @@
+<div style="margin-bottom: 40px;">
+    <h2>Налаштування імпорту</h2>
+    <form method="POST" action="{{ url_for('main.settings') }}" style="max-width: 800px; margin: auto;">
+        <input type="hidden" name="form_type" value="import_settings">
+        <div class="form-group">
+            <label for="xml_url">Імпорт XML за посиланням:</label>
+            <input type="url" name="xml_url" id="xml_url" value="{{ import_settings.xml_url }}" required>
+        </div>
+        <div class="form-group">
+            <label for="sync_interval_minutes">Імпорт XML оновлюється кожні (хвилин):</label>
+            <input type="number" name="sync_interval_minutes" id="sync_interval_minutes" 
+                   value="{{ import_settings.sync_interval_minutes }}" 
+                   min="1" max="1440" required>
+            <small>Можна вказати значення від 1 до 1440 хвилин.</small>
+        </div>
+        <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px;">
+            <button type="submit">Зберегти налаштування імпорту</button>
+            
+            {# --- ПОЧАТОК ЗМІН --- #}
+            {# Змінюємо посилання на кнопку з унікальним ID #}
+            <button type="button" id="syncNowBtnSettings" class="button button-secondary">Оновити зараз</button>
+            {# --- КІНЕЦЬ ЗМІН --- #}
+            
+        </div>
+    </form>
+</div>

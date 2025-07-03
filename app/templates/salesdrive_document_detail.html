@@ -1,0 +1,168 @@
+{% extends "layout.html" %}
+{% block title %}Накладна №{{ document.id if document else '...' }}{% endblock %}
+
+{% block content %}
+<style>
+    table tbody tr:hover {
+        background-color: #f5f5f5 !important;
+    }
+    .numeric-col {
+        width: 10%; 
+        text-align: center;
+    }
+    .numeric-col-header {
+        width: 10%;
+        text-align: left;
+    }
+    .actions-cell {
+        text-align: center;
+    }
+    .action-btn {
+        padding: 10px 15px;
+        font-size: 1em;
+        line-height: 1.2;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        color: white;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+        background-color: #007bff;
+    }
+    .action-btn:hover {
+        background-color: #0056b3;
+    }
+</style>
+
+{% if document %}
+    <h1>Прихідна накладна №{{ document.get('id', 'N/A') }} від {{ document.get('date', 'N/A').split(' ')[0].split('-')|reverse|join('.') }}</h1>
+
+    <div style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">
+        <a href="{{ url_for('main.salesdrive_index') }}" class="button button-secondary">&larr; Повернутися до списку</a>
+        <button type="button" class="button print-btn" data-doc-id="{{ document.get('id') }}">Друкувати накладну</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;">SKU</th>
+                <th>Назва товару</th>
+                <th class="numeric-col-header">К-сть</th>
+                <th class="numeric-col-header">Собівартість ({{ cost_currency_code }})</th>
+                <th class="numeric-col-header">Сума (UAH)</th>
+                <th style="width: 1%; white-space: nowrap; text-align: center;">Дії</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for item in document.get('documentItems', []) %}
+            <tr>
+                <td>{{ item.get('product', {}).get('sku', 'N/A') }}</td>
+                <td>{{ item.get('product', {}).get('nameTranslate', item.get('description', 'N/A')) }}</td>
+                <td class="numeric-col">{{ (item.get('count')|float)|int }} {{ item.get('unit', {}).get('title', '') }}</td>
+                <td class="numeric-col">{{ ("%.2f"|format(item.get('price')|float)).replace('.', ',') if item.get('price') else '0,00' }}</td>
+                <td class="numeric-col">{{ ("%.2f"|format(item.get('sum')|float)).replace('.', ',') if item.get('sum') else '0,00' }}</td>
+                <td class="actions-cell">
+                    <button type="button" class="action-btn"
+                            onclick="openSingleItemPrintModal(this)"
+                            data-sku="{{ item.get('product', {}).get('sku', '') }}"
+                            data-name="{{ item.get('product', {}).get('nameTranslate', item.get('description', 'N/A'))|replace('"', '&quot;') }}"
+                            data-price="{{ item.get('price', 0)|float }}"
+                            data-url="{{ item.get('product', {}).get('href', '') }}">
+                        Друк
+                    </button>
+                </td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="6" style="text-align: center;">Товари в цьому документі відсутні.</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <h1>Помилка</h1>
+    <p>Не вдалося завантажити дані для цього документа.</p>
+    <a href="{{ url_for('main.salesdrive_index') }}" class="button">Повернутися до списку</a>
+{% endif %}
+
+{% include 'components/modals.html' %}
+{% include 'components/salesdrive_print_modal.html' %}
+
+
+{% endblock %}
+
+{% block scripts %}
+{% include 'components/salesdrive_scripts.html' %} 
+
+<script>
+function closePrintModal() {
+    const modalOverlay = document.getElementById('printModalOverlay');
+    if (modalOverlay) {
+        modalOverlay.style.display = 'none';
+    }
+}
+
+function openSingleItemPrintModal(button) {
+    const productData = {
+        sku: button.dataset.sku,
+        name: button.dataset.name,
+        price: button.dataset.price,
+        url: button.dataset.url
+    };
+
+    const printers = JSON.parse('{{ printers_json|safe }}');
+    
+    const modalOverlay = document.getElementById('printModalOverlay');
+    const modalTitle = document.getElementById('modalPrintTitle');
+    const modalProductInfo = document.getElementById('modalProductInfo');
+    const modalProductSku = document.getElementById('modalProductSku');
+    const modalProductName = document.getElementById('modalProductName');
+    const printersContainer = document.getElementById('modalPrintersContainer');
+
+    if (!modalOverlay || !printersContainer) {
+        showToast('Помилка: Структура модального вікна для друку не знайдена.', 'error');
+        return;
+    }
+
+    modalTitle.textContent = 'Друк етикетки';
+    modalProductInfo.style.display = 'block';
+    modalProductSku.textContent = productData.sku;
+    modalProductName.textContent = productData.name;
+    printersContainer.innerHTML = ''; 
+    printersContainer.style.cssText = 'display: flex; gap: 15px; align-items: stretch; flex-wrap: wrap;';
+
+    if (printers.length > 0) {
+        printers.forEach((printer, index) => {
+            const form = document.createElement('form');
+            form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
+            
+            form.onsubmit = (event) => submitPrintJob(event, "{{ url_for('main.execute_print') }}");
+
+            form.innerHTML = `
+                <div style="flex-grow: 1;">
+                    <input type="hidden" name="sku" value="${productData.sku}">
+                    <input type="hidden" name="name" value="${productData.name}">
+                    <input type="hidden" name="price" value="${productData.price}">
+                    <input type="hidden" name="product_url" value="${productData.url}">
+                    <input type="hidden" name="printer_id" value="${printer.id}">
+                    <input type="hidden" name="display_currency" class="display-currency-input" value="{{ cost_currency_code }}">
+                    
+                    <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">${printer.name} (${printer.label_size})</h4>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label>Кількість етикеток</label>
+                        <input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;">
+                    </div>
+                    ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>Кількість для сортування</label><input type="number" name="sorting_quantity" min="1" required class="print-input" style="height: 35px;"></div>` : ''}
+                </div>
+                <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>
+            `;
+            printersContainer.appendChild(form);
+        });
+    } else {
+        printersContainer.innerHTML = '<p>Принтери не налаштовані.</p>';
+    }
+    modalOverlay.style.display = 'flex';
+}
+</script>
+{% endblock %}

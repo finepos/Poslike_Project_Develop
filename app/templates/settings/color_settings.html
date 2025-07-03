@@ -1,0 +1,38 @@
+<div style="margin-bottom: 40px;">
+    <h2>Налаштування кольорів таблиці</h2>
+    <form method="POST" action="{{ url_for('main.settings') }}">
+        <input type="hidden" name="form_type" value="color_settings">
+        <table style="max-width: 600px; margin: auto;">
+            <tr>
+                <th>Рівень залишку</th>
+                <th>Колір фону</th>
+                <th>Колір тексту</th>
+            </tr>
+            {% for setting in color_settings %}
+            <tr>
+                <td>{{ setting.label }}</td>
+                <td>
+                    <div class="color-input-wrapper">
+                        <span class="color-swatch" style="background-color: {{ setting.background_color }};"></span>
+                        <input type="color" name="bg_{{ setting.level_name }}" value="{{ setting.background_color }}">
+                    </div>
+                </td>
+                <td>
+                    <div class="color-input-wrapper">
+                        <span class="color-swatch" style="background-color: {{ setting.text_color }};"></span>
+                        <input type="color" name="text_{{ setting.level_name }}" value="{{ setting.text_color }}">
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        <div style="text-align: center; margin-top: 20px;">
+            <button type="submit">Зберегти кольори</button>
+        </div>
+    </form>
+    <div style="text-align: center; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;">
+        <form method="POST" action="{{ url_for('main.reset_color_settings') }}" onsubmit="return confirm('Скинути налаштування кольорів до стандартних? Це оновить список рівнів до останньої версії.');">
+            <button type="submit" class="button-secondary">Скинути кольори до стандартних</button>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,56 @@
+<div class="search-form" style="margin: 20px 0; padding: 20px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px;">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 15px;">
+        
+        <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: baseline; flex-grow: 1;">
+            <input type="text" name="search_sku" id="searchSkuInput" placeholder="Пошук по SKU (Точне співпадіння)" value="{{ search_sku or '' }}" style="flex: 1 1 150px;" form="mainSearchForm">
+            <input type="text" name="search_name" placeholder="Пошук по Назві" value="{{ search_name or '' }}" style="flex: 1 1 200px;" form="mainSearchForm">
+            
+            <div class="multiselect-container">
+                <div class="select-box" onclick="toggleCategoryCheckboxes()">
+                    <span id="categorySelectText">Всі категорії</span>
+                </div>
+                <div class="checkboxes" id="categoryCheckboxes">
+                    <input type="text" id="categorySearchInput" onkeyup="filterCategories()" placeholder="Пошук по категоріях...">
+                    <div id="categoryList">
+                        {% for category in categories %}
+                        <label>
+                            <input type="checkbox" name="search_category" value="{{ category }}" form="mainSearchForm" 
+                                   {% if category in search_categories %}checked{% endif %}> {{ category }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; gap: 5px; align-items: baseline; flex: 1 1 250px;">
+                <select name="stock_filter" id="stockFilterSelect" style="flex: 1;" form="mainSearchForm">
+                    <option value="">Фільтр по залишку...</option>
+                    <option value="less" {% if stock_filter == 'less' %}selected{% endif %}>Менше ніж</option>
+                    <option value="more" {% if stock_filter == 'more' %}selected{% endif %}>Більше ніж</option>
+                    <option value="equal" {% if stock_filter == 'equal' %}selected{% endif %}>Дорівнює</option>
+                </select>
+                <input type="number" name="stock_quantity" id="stockQuantityInput" value="{{ stock_quantity or '' }}" placeholder="К-сть" style="flex: 0 1 80px;" form="mainSearchForm">
+            </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;">
+            <div id="bulkActionsContainer" style="display: none; gap: 10px; flex-wrap: nowrap; align-items: baseline;">
+                <select name="action" id="bulkActionSelect" style="min-width: 150px;">
+                    <option value="print" data-btn-text="Друк">Друк</option>
+                    <option value="export_xls" data-btn-text="Експорт XLS">Експорт XLS</option>
+                    <option value="export_pdf" data-btn-text="Експорт PDF">Експорт PDF</option>
+                    <option value="export_xls_plus" data-btn-text="Експорт XLS+">Експорт XLS+</option>
+                    <option value="export_goods_receipt" data-btn-text="Згенерувати">Надходження XLS</option>
+                </select>
+                <button type="submit" id="bulkActionButton" class="button" style="min-width: 150px;">Друк</button>
+            </div>
+            <button type="submit" form="mainSearchForm">Шукати</button>
+            <a href="{{ url_for('main.index') }}" class="button button-secondary">Очистити</a>
+        </div>
+    </div>
+    
+    {% if show_param_filters %}
+    <div id="paramFiltersContainer" style="margin-top: 15px;"></div>
+    {% endif %}
+    <div id="stockLevelFiltersContainer" style="margin-top: 15px; display: none;"></div>
+</div>

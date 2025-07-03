@@ -1,0 +1,22 @@
+<div style="margin-bottom: 40px;">
+    <h2>Налаштування інтеграції з SalesDrive</h2>
+    <form method="POST" action="{{ url_for('main.settings') }}" style="max-width: 800px; margin: auto;">
+        <input type="hidden" name="form_type" value="salesdrive_settings">
+        <div class="form-group">
+            <label for="salesdrive_domain">Домен SalesDrive:</label>
+            <input type="text" name="salesdrive_domain" id="salesdrive_domain" value="{{ import_settings.salesdrive_domain }}" required placeholder="наприклад, printec">
+            <small>Введіть тільки домен, без .salesdrive.me</small>
+        </div>
+        <div class="form-group">
+            <label for="salesdrive_login">Логін:</label>
+            <input type="text" name="salesdrive_login" id="salesdrive_login" value="{{ import_settings.salesdrive_login }}" required>
+        </div>
+        <div class="form-group">
+            <label for="salesdrive_password">Пароль:</label>
+            <input type="password" name="salesdrive_password" id="salesdrive_password" value="{{ import_settings.salesdrive_password }}" required>
+        </div>
+        <div style="text-align: center; margin-top: 20px;">
+            <button type="submit">Зберегти налаштування SalesDrive</button>
+        </div>
+    </form>
+</div>

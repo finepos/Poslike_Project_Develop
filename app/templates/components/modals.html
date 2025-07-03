@@ -1,0 +1,39 @@
+<div id="printModalOverlay" class="modal-overlay">
+    <div class="modal-content" style="max-width: 800px;">
+        <span class="modal-close" onclick="closePrintModal()">&times;</span>
+        <h1 id="modalPrintTitle">Друк етикетки</h1>
+        <div id="modalProductInfo">
+            <p><strong>SKU:</strong> <span id="modalProductSku"></span></p>
+            <p><strong>Товар:</strong> <span id="modalProductName"></span></p>
+        </div>
+        <hr style="margin: 15px 0;">
+        <div id="modalPrintersContainer"></div>
+    </div>
+</div>
+
+<div id="goodsReceiptModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="modal-close" onclick="closeGoodsReceiptModal()">&times;</span>
+        <h1>Надходження XLS</h1>
+        <p>Оберіть валюту для експорту ціни закупки.</p>
+        <form id="goodsReceiptForm" method="POST" action="{{ url_for('main.export_goods_receipt') }}">
+            <input type="hidden" name="product_ids" id="goodsReceiptProductIds">
+            <div class="form-group">
+                <label for="currency">Валюта</label>
+                <select name="currency" id="currency" required>
+                    {% if available_currencies %}
+                        {% for currency in available_currencies %}
+                        <option value="{{ currency.code }}">{{ currency.code }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+            <button type="submit" class="button" style="width: 100%;">Експортувати</button>
+        </form>
+    </div>
+</div>
+
+<div id="imageModalOverlay" class="modal-overlay" style="background-color: rgba(0,0,0,0.8);">
+    <span class="modal-close" style="color: #fff; font-size: 40px; top: 15px; right: 35px;" onclick="closeImageModal()">&times;</span>
+    <img id="imageModalContent" src="" style="max-height: 90vh; max-width: 90vw; border-radius: 8px;">
+</div>

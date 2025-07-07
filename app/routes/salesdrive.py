@@ -5,9 +5,10 @@ from flask import render_template, current_app, flash, redirect, url_for, reques
 from openpyxl import Workbook
 from openpyxl.styles import Alignment
 from io import BytesIO
+from datetime import datetime
 
 from . import bp
-from ..models import Setting, Printer, PrintJob
+from ..models import Setting, Printer, PrintJob, Currency
 from ..extensions import db
 from ..utils import natural_sort_key
 from ..printing import generate_zpl_code
@@ -286,89 +287,86 @@ def salesdrive_print_invoice():
         return jsonify({'status': 'error', 'message': f'Помилка сервера: {e}'}), 500
 
 
-# ▼▼▼ ОНОВЛЕНА ФУНКЦІЯ ЕКСПОРТУ З ВИРІВНЮВАННЯМ ▼▼▼
-# ▼▼▼ ОНОВЛЕНА ФУНКЦІЯ ЕКСПОРТУ З НОВИМ ПОРЯДКОМ ПОЛІВ ▼▼▼
+# ▼▼▼ ПОЧАТОК: ЗАМІНІТЬ ІСНУЮЧУ ФУНКЦІЮ НА ЦЕЙ КОД ▼▼▼
 @bp.route('/salesdrive/export-xls', methods=['POST'])
 def salesdrive_export_xls():
+    """
+    Експортує вибрані товари з накладної в XLS, конвертуючи собівартість
+    в обрану користувачем валюту.
+    """
     selected_products_json = request.form.getlist('selected_products')
-    currency_code = request.form.get('currency_code', 'N/A')
-    
-    if not selected_products_json:
-        flash('Товари для експорту не обрано.', 'warning')
+    export_currency_code = request.form.get('export_currency')
+    source_currency_id_str = request.form.get('source_currency_id')
+
+    if not all([selected_products_json, export_currency_code, source_currency_id_str]):
+        flash('Помилка: Не обрано товари або валюту для експорту.', 'warning')
         return redirect(request.referrer)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "SalesDrive_Export"
-    
-    # Оновлюємо заголовки згідно з новим порядком
-    headers = [
-        'ID', 'Назва товару', 'SKU', 'К-сть', 'Собівартість', 
-        'Собівартість - Валюта', 'Сума', 'Знижка', 'Собівартість зі знижкою', 
-        'Період знижки від', 'Період знижки до'
-    ]
-    ws.append(headers)
+    try:
+        # Отримуємо всі курси валют з БД
+        currencies = Currency.query.all()
+        currency_id_map = {str(c.id): c for c in currencies}
+        currency_code_map = {c.code: c for c in currencies}
 
-    for product_json_str in selected_products_json:
-        try:
-            product_data = json.loads(product_json_str)
-            
-            sku = product_data.get('sku')
-            cost_price = float(product_data.get('price', 0))
-            discount = float(product_data.get('discount', 0))
-            cost_price_with_discount = cost_price - discount
-            
-            date_from_str = product_data.get('discountPeriodFrom')
-            date_to_str = product_data.get('discountPeriodTo')
-            
-            date_from_formatted = datetime.strptime(date_from_str, '%Y-%m-%d').strftime('%d.%m.%Y') if date_from_str else ''
-            date_to_formatted = datetime.strptime(date_to_str, '%Y-%m-%d').strftime('%d.%m.%Y') if date_to_str else ''
+        source_currency = currency_id_map.get(source_currency_id_str)
+        export_currency = currency_code_map.get(export_currency_code)
 
-            # Оновлюємо порядок даних у рядку відповідно до заголовків
-            row = [
-                sku,  # ID = SKU
-                product_data.get('name'),
-                sku,
-                product_data.get('quantity'),
-                f'{cost_price:.4f}'.replace('.', ','),
-                currency_code,
-                f"{product_data.get('sum', 0):.2f}".replace('.', ','),
-                f'{discount:.2f}'.replace('.', ','),
-                f'{cost_price_with_discount:.4f}'.replace('.', ','),
-                date_from_formatted,
-                date_to_formatted
+        if not source_currency or not export_currency:
+            flash('Помилка: Не вдалося знайти вказані валюти в базі даних.', 'danger')
+            return redirect(request.referrer)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "SalesDrive Export"
+
+        # Створюємо заголовки згідно з вашим запитом
+        headers = [
+            'ID товару/послуги', 'Назва (UA)', 'SKU', 'Ціна', 'Ціна - Валюта',
+            'Знижка', 'Ціна зі знижкою', 'Період знижки від', 'Період знижки до',
+            'Собівартість', 'Собівартість - Валюта', 'К-ть'
+        ]
+        ws.append(headers)
+
+        # Обробляємо кожен вибраний товар
+        for product_json_str in selected_products_json:
+            product = json.loads(product_json_str)
+            original_cost = float(product.get('price', 0))
+
+            # Конвертація: (Собівартість * Курс Вихідної Валюти) / Курс Цільової Валюти
+            cost_in_uah = original_cost * source_currency.rate
+            converted_cost = cost_in_uah / export_currency.rate if export_currency.rate != 0 else 0
+
+            # Заповнюємо рядок даними
+            row_data = [
+                product.get('productId'),
+                product.get('name'),
+                product.get('sku'),
+                '',  # Поле 'Ціна' не було вказано, звідки брати
+                '',  # Поле 'Ціна - Валюта'
+                '',  # Поле 'Знижка' відсутнє в даних накладної
+                '',  # Поле 'Ціна зі знижкою'
+                '',  # Поле 'Період знижки від'
+                '',  # Поле 'Період знижки до'
+                f'{converted_cost:.4f}'.replace('.', ','),  # Конвертована собівартість
+                export_currency_code,                       # Валюта собівартості
+                product.get('quantity')
             ]
-            ws.append(row)
-            
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
+            ws.append(row_data)
 
-    # Блок для автоматичної ширини стовпців
-    for col in ws.columns:
-        max_length = 0
-        column = col[0].column_letter
-        for cell in col:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = (max_length + 2)
-        ws.column_dimensions[column].width = adjusted_width
+    except Exception as e:
+        current_app.logger.error(f"Помилка під час генерації XLS: {e}")
+        flash(f'Сталася помилка під час створення файлу: {e}', 'danger')
+        return redirect(request.referrer)
 
-    # Блок для вирівнювання стовпця "К-сть" (залишається стовпець "D")
-    for cell in ws['D']:
-        if cell.row == 1:
-            continue
-        cell.alignment = Alignment(horizontal='center')
-
+    # Відправляємо згенерований файл користувачу
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-    
+    filename = f"salesdrive_products_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     return send_file(
         buffer,
         as_attachment=True,
-        download_name=f"salesdrive_export_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
+        download_name=filename,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+# ▲▲▲ КІНЕЦЬ: ЗАМІНІТЬ ІСНУЮЧУ ФУНКЦІЮ НА ЦЕЙ КОД ▲▲▲

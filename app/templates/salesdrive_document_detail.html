@@ -126,44 +126,98 @@
 {% include 'components/modals.html' %}
 {% include 'components/salesdrive_print_modal.html' %}
 
+
+<div id="exportWithCurrencyModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="modal-close" onclick="document.getElementById('exportWithCurrencyModal').style.display = 'none'">&times;</span>
+        <h3>Експорт в XLS</h3>
+        <p>Оберіть валюту для експорту ціни закупки.</p>
+        <form id="exportWithCurrencyForm" method="POST" action="{{ url_for('main.salesdrive_export_xls') }}">
+            <input type="hidden" name="source_currency_id" value="{{ document.currencyId }}">
+            <div id="hidden-products-container"></div>
+
+            <div class="form-group">
+                <label for="export_currency">Валюта</label>
+                <select name="export_currency" required>
+                    {% if available_currencies %}
+                        {% for currency in available_currencies %}
+                        <option value="{{ currency.code }}">{{ currency.code }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+            <button type="submit" class="button" style="width: 100%;">Експортувати</button>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
-    {% include 'components/salesdrive_scripts.html' %}
-    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-        const productCheckboxes = document.querySelectorAll('.product-checkbox');
-        const bulkActionsContainer = document.getElementById('bulkActionsContainer');
-        const bulkActionSelect = document.getElementById('bulkActionSelect');
-        const bulkActionButton = document.getElementById('bulkActionButton');
+{% include 'components/salesdrive_scripts.html' %}
 
-        function toggleBulkActions() {
-            const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
-            if(bulkActionsContainer) {
-                bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
-            }
-        }
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Логіка для масових дій (експорт) ---
+    const bulkActionForm = document.getElementById('bulkActionForm');
+    const bulkActionSelect = document.getElementById('bulkActionSelect');
+    const bulkActionButton = document.getElementById('bulkActionButton');
 
-        if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', (e) => {
-                productCheckboxes.forEach(cb => cb.checked = e.target.checked);
-                toggleBulkActions();
-            });
-        }
+    if (bulkActionButton) {
+        bulkActionButton.addEventListener('click', (e) => {
+            e.preventDefault(); // Завжди зупиняємо стандартну поведінку кнопки
 
-        productCheckboxes.forEach(cb => {
-            cb.addEventListener('change', toggleBulkActions);
-        });
-        
-        if(bulkActionSelect) {
-            bulkActionSelect.addEventListener('change', () => {
-                if (bulkActionButton) {
-                    bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText;
+            const selectedAction = bulkActionSelect.value;
+            if (selectedAction === 'export_xls') {
+                const selectedCheckboxes = document.querySelectorAll('.product-checkbox:checked');
+                if (selectedCheckboxes.length === 0) {
+                    showToast('Будь ласка, оберіть хоча б один товар для експорту.', 'error');
+                    return;
                 }
-            });
+
+                // Наповнюємо прихованими даними форму в модальному вікні
+                const hiddenContainer = document.getElementById('hidden-products-container');
+                hiddenContainer.innerHTML = ''; // Очищуємо від попередніх виборів
+
+                selectedCheckboxes.forEach(checkbox => {
+                    const hiddenInput = document.createElement('input');
+                    hiddenInput.type = 'hidden';
+                    hiddenInput.name = 'selected_products';
+                    hiddenInput.value = checkbox.value;
+                    hiddenContainer.appendChild(hiddenInput);
+                });
+
+                // Показуємо модальне вікно
+                document.getElementById('exportWithCurrencyModal').style.display = 'flex';
+            }
+        });
+    }
+
+    // --- Логіка для виділення всіх товарів ---
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const productCheckboxes = document.querySelectorAll('.product-checkbox');
+    const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+
+    function toggleBulkActions() {
+        const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
+        if(bulkActionsContainer) {
+            bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
         }
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', (e) => {
+            productCheckboxes.forEach(cb => cb.checked = e.target.checked);
+            toggleBulkActions();
+        });
+    }
+
+    productCheckboxes.forEach(cb => {
+        cb.addEventListener('change', toggleBulkActions);
     });
+
+    // Ініціалізуємо стан кнопок при завантаженні сторінки
+    toggleBulkActions();
+});
     </script>
     <script>
     function closePrintModal() {

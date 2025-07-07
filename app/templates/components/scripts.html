@@ -22,8 +22,8 @@
 
     function openPrintModal(button) {
         const tr = button.closest('tr');
-        const productSku = tr.cells[1].textContent;
-        const productName = tr.cells[2].textContent;
+        const productSku = tr.dataset.sku;
+        const productName = tr.dataset.name;
         const productId = tr.querySelector('.product-checkbox').value;
 
         document.getElementById('modalPrintTitle').textContent = 'Друк етикетки';
@@ -96,15 +96,27 @@
 
     function closeGoodsReceiptModal() { if (goodsReceiptModal) { goodsReceiptModal.style.display = 'none'; } }
     
+    // ▼▼▼ ПОЧАТОК ЗМІН ▼▼▼
     async function submitSinglePrintJob(event) { 
-        document.querySelectorAll('.display-currency-input').forEach(input => { input.value = document.getElementById('currencySelector').value; });
+        const currencySelector = document.getElementById('currencySelector');
+        if (currencySelector) { // Перевіряємо, чи існує елемент
+            document.querySelectorAll('.display-currency-input').forEach(input => {
+                input.value = currencySelector.value;
+            });
+        }
         await submitPrintJob(event, "{{ url_for('main.execute_print') }}"); 
     }
     
     async function submitBulkPrintJob(event) { 
-        document.querySelectorAll('.display-currency-input').forEach(input => { input.value = document.getElementById('currencySelector').value; });
+        const currencySelector = document.getElementById('currencySelector');
+        if (currencySelector) { // Перевіряємо, чи існує елемент
+            document.querySelectorAll('.display-currency-input').forEach(input => {
+                input.value = currencySelector.value;
+            });
+        }
         await submitPrintJob(event, "{{ url_for('main.execute_bulk_print') }}"); 
     }
+    // ▲▲▲ КІНЕЦЬ ЗМІН ▲▲▲
 
     function closePrintModal() { clearTimeout(printModalTimeout); if (printModalOverlay) printModalOverlay.style.display = 'none'; }
     function showProductImage(src) { if(src) { document.getElementById('imageModalContent').src = src; imageModalOverlay.style.display = 'flex'; } }
@@ -320,17 +332,13 @@
             }, 30000);
         }
         
-        // --- ПОЧАТОК НОВИХ ЗМІН ---
-        // ПЕРЕМІСТІТЬ ВАШ БЛОК СЮДИ
         const isExactSkuSearch = {{ is_exact_sku_search|tojson }};
         if (isExactSkuSearch) {
             console.log('Точний пошук по SKU. Запускаю 15-хвилинний таймер для очищення.');
             setTimeout(() => {
-                // Перенаправляємо на головну сторінку без параметрів пошуку
                 window.location.href = "{{ url_for('main.index') }}";
-            }, 900000); // 15 хвилин = 900 000 мілісекунд
+            }, 900000); 
         }
-        // --- КІНЕЦЬ НОВИХ ЗМІН ---
 
         const categoryCheckboxes = document.querySelectorAll('#categoryList input[type="checkbox"]');
         categoryCheckboxes.forEach(cb => {

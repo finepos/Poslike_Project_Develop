@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+{% block title %}Імпорт даних для аналітики{% endblock %}
+
+{% block content %}
+<h1>Імпорт даних для аналітики</h1>
+
+<div style="max-width: 800px; margin: 20px auto; padding: 20px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px;">
+    <h2>Завантажити новий файл</h2>
+    <p>Виберіть XLS або XLSX файл зі статистикою для імпорту. Файл має містити щонайменше 10 стовпців з очікуваними назвами.</p>
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="import_file">Вибрати файл</label>
+            <input type="file" name="import_file" id="import_file" required accept=".xls, .xlsx">
+        </div>
+        <button type="submit">Імпортувати дані</button>
+    </form>
+</div>
+
+
+<div style="margin-top: 40px;">
+    <h2>Історія імпортів</h2>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 5%;">#</th>
+                <th>Дата імпорту</th>
+                <th>Період даних</th>
+                <th>Дії</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for imp in imports %}
+            <tr>
+                <td>{{ imp.id }}</td>
+                <td>
+                    {{ imp.import_date.strftime('%Y-%m-%d %H:%M:%S') }} (UTC)
+                    <br>
+                    <small style="color: #555;">(Файл: {{ imp.original_filename }})</small>
+                </td>
+                <td>
+                    {% if imp.data_period_start and imp.data_period_end %}
+                        {{ imp.data_period_start.strftime('%d.%m.%Y') }} - {{ imp.data_period_end.strftime('%d.%m.%Y') }}
+                    {% else %}
+                        Не визначено
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="POST" action="{{ url_for('main.analytics_delete', import_id=imp.id) }}" onsubmit="return confirm('Ви впевнені, що хочете видалити цей імпорт та всі пов\'язані з ним дані? Файл також буде видалено з сервера.');">
+                        <button type="submit" class="button-danger">Видалити</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center;">Історія імпортів порожня.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

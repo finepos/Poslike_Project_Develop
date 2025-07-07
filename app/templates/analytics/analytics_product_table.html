@@ -1,0 +1,51 @@
+<table>
+    <thead>
+        <tr>
+            <th style="width: 30px; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Обрати всі"></th>
+            <th>SKU</th> 
+            <th>Назва товару</th>
+            <th>Ціна</th>
+            <th>Залишок</th>
+            <th>В дорозі</th>
+            <th>Мін. залишок</th> 
+            <th>Продано</th>
+            <th>К-ть заявок</th>
+            <th>Дії</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in products %}
+            {% set product = item.product %}
+            <tr class="{{ item.status_class }}" data-sku="{{ product.sku }}" data-name="{{ product.name }}">
+                <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox"></td>
+                <td>{{ product.sku }}</td>
+                <td style="max-width: 400px; word-wrap: break-word;">{{ product.name }}</td>
+                <td class="product-price" data-base-price="{{ product.price }}">{{ "%.2f"|format(product.price) }}</td>
+                <td style="text-align: center;"><b>{{ product.stock }}</b></td>
+                <td style="text-align: center;">{{ product.in_transit_quantity }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('main.update_minimum_stock') }}" style="align-items: center; margin: 0;">
+                        <input type="hidden" name="product_id" value="{{ product.id }}">
+                        <input type="number" name="minimum_stock" value="{{ product.minimum_stock or '' }}" placeholder="--"
+                               style="width: 70px; padding: 5px; margin-right: 5px; margin-bottom: 0; height: 33px; box-sizing: border-box;">
+                        <button type="submit" style="padding: 5px 10px; height: 33px; box-sizing: border-box;">OK</button>
+                    </form>
+                </td>
+                <td style="text-align: center;">{{ item.total_sold or 0 }}</td>
+                <td style="text-align: center;">{{ item.request_count or 0 }}</td>
+                <td style="min-width: 210px;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center;">
+                        <a href="{{ url_for('main.add_in_transit_form', product_id=product.id) }}" class="button" title="Додати в дорозі">+</a>
+                        <button type="button" class="button button-secondary" onclick="openPrintModal(this)" title="Друк етикетки">Друк</button>
+                        {% if item.product_url %}<a href="{{ item.product_url }}" target="_blank" class="button" style="background-color: #17a2b8;" title="Відкрити на сайті">Сайт</a>{% endif %}
+                        {% if item.product_picture %}
+                        <button type="button" class="button" style="background-color: #28a745;" onclick="showProductImage('{{ item.product_picture }}')" title="Показати фото">Фото</button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="10" style="text-align:center;">Товарів за вашим запитом не знайдено.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>

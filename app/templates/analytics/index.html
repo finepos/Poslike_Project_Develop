@@ -1,0 +1,108 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <style>
+        /* Стилі скопійовано з index.html для ідентичного вигляду */
+        .search-form .button,
+        .search-form button,
+        .search-form input,
+        .search-form select {
+            height: 38px;
+            box-sizing: border-box;
+        }
+        .highlight-error {
+            border: 2px solid red !important;
+            box-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+        }
+        .multiselect-container {
+            position: relative;
+            flex: 1 1 220px;
+            min-width: 220px;
+        }
+        .select-box {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 0 10px;
+            cursor: pointer;
+            background-color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            height: 36px;
+            display: flex;
+            align-items: center;
+        }
+        .checkboxes {
+            display: none;
+            position: absolute;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            z-index: 100;
+            width: 100%;
+            max-height: 250px;
+            overflow-y: auto;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .checkboxes label {
+            display: flex;
+            align-items: center;
+            padding: 3px 5px;
+            font-weight: normal;
+            font-size: 14px;
+            cursor: pointer;
+            line-height: 1.2;
+        }
+        .checkboxes label:hover {
+            background-color: #f2f2f2;
+        }
+        .checkboxes input[type="text"] {
+            width: 100%;
+            margin-bottom: 10px;
+            height: 32px;
+        }
+        .checkboxes label input[type="checkbox"] {
+            width: auto;
+            height: auto;
+            margin: 0 8px 0 0;
+            flex-shrink: 0;
+            padding: 0;
+        }
+        .select-box,
+        #stockFilterSelect {
+            font-size: 0.8em;
+            color: #757575;
+        }
+        .select-box.has-selection,
+        #stockFilterSelect.has-selection {
+            color: #000;
+        }
+    </style>
+    
+    <div class="header-controls">
+        <div style="display: flex; align-items: center; gap: 20px; width: 100%;">
+            <a href="{{ url_for('main.analytics_settings') }}" class="button button-secondary">Імпорт даних</a>
+            <h1 style="margin: 0; color: red; text-align: center; flex-grow: 1;">Аналітика продажів</h1>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('main.bulk_actions') }}" id="bulkActionForm">
+        <input type="hidden" name="display_currency" id="displayCurrencyInput" class="display-currency-input" value="UAH">
+
+        {% include 'components/search_form.html' %}
+        
+        {% include 'analytics/analytics_product_table.html' %}
+
+    </form>
+
+    <form method="GET" action="{{ url_for('main.analytics_index') }}" id="mainSearchForm"></form>
+
+    {% include 'components/pagination.html' %}
+    {% include 'components/modals.html' %}
+
+{% endblock %}
+
+{% block scripts %}
+    {% include 'components/scripts.html' %}
+{% endblock %}

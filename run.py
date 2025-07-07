@@ -1,3 +1,4 @@
+# run.py
 import logging
 from app import create_app
 from app.initialization import init_app_data
@@ -18,7 +19,18 @@ def run_with_context(func):
     return wrapper
 
 with app.app_context():
+    # ▼▼▼ ОНОВЛЕНА ЛОГІКА СТВОРЕННЯ ТАБЛИЦЬ ▼▼▼
+    
+    # 1. Створюємо таблиці для основної бази даних (stock_control.db)
     db.create_all()
+    
+    # 2. Явно створюємо таблиці для бази даних аналітики (analytics.db)
+    analytics_engine = db.get_engine(app, bind='analytics')
+    if analytics_engine:
+        db.metadata.create_all(bind=analytics_engine)
+
+    # ▲▲▲ КІНЕЦЬ ОНОВЛЕННЯ ▲▲▲
+
     init_app_data(app)
 
     logging.info("Запуск початкової синхронізації XML...")
@@ -31,7 +43,6 @@ with app.app_context():
     sync_job_func = run_with_context(sync_products_from_xml)
     print_queue_func = run_with_context(process_print_queue)
     
-    # Використовуємо правильний метод 'modify_job'
     if scheduler.get_job('sync_job'):
         scheduler.modify_job('sync_job', trigger='interval', minutes=sync_interval)
         logging.info(f"Завдання 'sync_job' переплановано з інтервалом {sync_interval} хв.")

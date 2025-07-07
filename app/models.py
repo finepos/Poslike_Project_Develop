@@ -99,6 +99,7 @@ class Setting(db.Model):
 
 class AnalyticsImport(db.Model):
     """Модель для зберігання інформації про імпортовані файли аналітики."""
+    __bind_key__ = 'analytics'
     id = db.Column(db.Integer, primary_key=True)
     original_filename = db.Column(db.String(255), nullable=False)
     file_path = db.Column(db.String(255), unique=True, nullable=False)
@@ -111,6 +112,7 @@ class AnalyticsImport(db.Model):
 
 class AnalyticsData(db.Model):
     """Модель для зберігання одного рядка даних з файлу аналітики."""
+    __bind_key__ = 'analytics'
     id = db.Column(db.Integer, primary_key=True)
     import_id = db.Column(db.Integer, db.ForeignKey('analytics_import.id'), nullable=False)
     

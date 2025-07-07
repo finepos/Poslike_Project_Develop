@@ -6,6 +6,10 @@ class Config:
     SCHEDULER_API_ENABLED = True
     SECRET_KEY = os.urandom(24)
     SQLALCHEMY_DATABASE_URI = 'sqlite:///../instance/stock_control.db'
+    # --- ▼▼▼ ДОДАЙТЕ ЦЕЙ РЯДОК ▼▼▼ ---
+    SQLALCHEMY_BINDS = {
+        'analytics': 'sqlite:///../instance/analytics.db'
+    }
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 # Стандартні ZPL-шаблони

@@ -56,7 +56,7 @@
     <tbody>
         {% for item in products %}
             {% set product = item.product %}
-            <tr class="{{ item.status_class }}">
+            <tr class="{{ item.status_class }}" data-sku="{{ product.sku }}" data-name="{{ product.name }}">
                 <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox"></td>
                 <td>{{ product.sku }}</td>
                 <td style="max-width: 400px; word-wrap: break-word;">{{ product.name }}</td>

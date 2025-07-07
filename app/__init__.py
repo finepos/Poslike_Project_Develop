@@ -69,5 +69,9 @@ def create_app():
 
         # Переконуємось, що моделі імпортовані
         from . import models
+        
+        # --- ▼▼▼ ДОДАЙТЕ ЦЕЙ КОД ▼▼▼ ---
+        # Створюємо всі таблиці, включаючи ті, що в 'analytics' bind
+        db.create_all()
 
     return app

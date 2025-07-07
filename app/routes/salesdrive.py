@@ -1,7 +1,9 @@
 import requests
 import json
+from datetime import datetime
 from flask import render_template, current_app, flash, redirect, url_for, request, jsonify, send_file
 from openpyxl import Workbook
+from openpyxl.styles import Alignment
 from io import BytesIO
 
 from . import bp
@@ -284,10 +286,12 @@ def salesdrive_print_invoice():
         return jsonify({'status': 'error', 'message': f'Помилка сервера: {e}'}), 500
 
 
-# ▼▼▼ НОВИЙ МАРШРУТ ДЛЯ ЕКСПОРТУ В XLS ▼▼▼
+# ▼▼▼ ОНОВЛЕНА ФУНКЦІЯ ЕКСПОРТУ З ВИРІВНЮВАННЯМ ▼▼▼
+# ▼▼▼ ОНОВЛЕНА ФУНКЦІЯ ЕКСПОРТУ З НОВИМ ПОРЯДКОМ ПОЛІВ ▼▼▼
 @bp.route('/salesdrive/export-xls', methods=['POST'])
 def salesdrive_export_xls():
     selected_products_json = request.form.getlist('selected_products')
+    currency_code = request.form.get('currency_code', 'N/A')
     
     if not selected_products_json:
         flash('Товари для експорту не обрано.', 'warning')
@@ -296,20 +300,67 @@ def salesdrive_export_xls():
     wb = Workbook()
     ws = wb.active
     ws.title = "SalesDrive_Export"
-    ws.append(['Артикул', 'Назва товару', 'Кількість', 'Собівартість'])
+    
+    # Оновлюємо заголовки згідно з новим порядком
+    headers = [
+        'ID', 'Назва товару', 'SKU', 'К-сть', 'Собівартість', 
+        'Собівартість - Валюта', 'Сума', 'Знижка', 'Собівартість зі знижкою', 
+        'Період знижки від', 'Період знижки до'
+    ]
+    ws.append(headers)
 
     for product_json_str in selected_products_json:
         try:
-            product = json.loads(product_json_str)
-            ws.append([
-                product.get('sku'),
-                product.get('name'),
-                product.get('quantity'),
-                product.get('price')
-            ])
-        except (json.JSONDecodeError, TypeError):
-            # Пропускаємо неправильно сформовані дані
+            product_data = json.loads(product_json_str)
+            
+            sku = product_data.get('sku')
+            cost_price = float(product_data.get('price', 0))
+            discount = float(product_data.get('discount', 0))
+            cost_price_with_discount = cost_price - discount
+            
+            date_from_str = product_data.get('discountPeriodFrom')
+            date_to_str = product_data.get('discountPeriodTo')
+            
+            date_from_formatted = datetime.strptime(date_from_str, '%Y-%m-%d').strftime('%d.%m.%Y') if date_from_str else ''
+            date_to_formatted = datetime.strptime(date_to_str, '%Y-%m-%d').strftime('%d.%m.%Y') if date_to_str else ''
+
+            # Оновлюємо порядок даних у рядку відповідно до заголовків
+            row = [
+                sku,  # ID = SKU
+                product_data.get('name'),
+                sku,
+                product_data.get('quantity'),
+                f'{cost_price:.4f}'.replace('.', ','),
+                currency_code,
+                f"{product_data.get('sum', 0):.2f}".replace('.', ','),
+                f'{discount:.2f}'.replace('.', ','),
+                f'{cost_price_with_discount:.4f}'.replace('.', ','),
+                date_from_formatted,
+                date_to_formatted
+            ]
+            ws.append(row)
+            
+        except (json.JSONDecodeError, TypeError, ValueError):
             continue
+
+    # Блок для автоматичної ширини стовпців
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        ws.column_dimensions[column].width = adjusted_width
+
+    # Блок для вирівнювання стовпця "К-сть" (залишається стовпець "D")
+    for cell in ws['D']:
+        if cell.row == 1:
+            continue
+        cell.alignment = Alignment(horizontal='center')
 
     buffer = BytesIO()
     wb.save(buffer)
@@ -318,6 +369,6 @@ def salesdrive_export_xls():
     return send_file(
         buffer,
         as_attachment=True,
-        download_name='salesdrive_products.xlsx',
+        download_name=f"salesdrive_export_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )

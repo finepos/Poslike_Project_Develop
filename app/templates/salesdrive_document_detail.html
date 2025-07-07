@@ -62,7 +62,9 @@
         </div>
     </div>
     
-    <form method="POST" action="{{ url_for('main.salesdrive_export_xls') }}" id="bulkActionForm"></form>
+    <form method="POST" action="{{ url_for('main.salesdrive_export_xls') }}" id="bulkActionForm">
+        <input type="hidden" name="currency_code" value="{{ cost_currency_code }}">
+    </form>
 
     <table>
         <thead>
@@ -83,7 +85,11 @@
                     'sku': item.get('product', {}).get('sku', 'N/A'),
                     'name': item.get('product', {}).get('nameTranslate', item.get('description', 'N/A')),
                     'quantity': (item.get('count')|float)|int,
-                    'price': item.get('price', 0)|float
+                    'price': item.get('price', 0)|float,
+                    'sum': item.get('sum', 0)|float,
+                    'discount': item.get('product', {}).get('discount', 0)|float,
+                    'discountPeriodFrom': item.get('product', {}).get('discountPeriodFrom'),
+                    'discountPeriodTo': item.get('product', {}).get('discountPeriodTo')
                 } | tojson %}
                 <td style="text-align: center;">
                     <input type="checkbox" name="selected_products" class="product-checkbox" value='{{ item_json }}' form="bulkActionForm">
@@ -123,90 +129,90 @@
 {% endblock %}
 
 {% block scripts %}
-{% include 'components/salesdrive_scripts.html' %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-    const productCheckboxes = document.querySelectorAll('.product-checkbox');
-    const bulkActionsContainer = document.getElementById('bulkActionsContainer');
-    const bulkActionSelect = document.getElementById('bulkActionSelect');
-    const bulkActionButton = document.getElementById('bulkActionButton');
+    {% include 'components/salesdrive_scripts.html' %}
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const productCheckboxes = document.querySelectorAll('.product-checkbox');
+        const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+        const bulkActionSelect = document.getElementById('bulkActionSelect');
+        const bulkActionButton = document.getElementById('bulkActionButton');
 
-    function toggleBulkActions() {
-        const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
-        if(bulkActionsContainer) {
-            bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
-        }
-    }
-
-    if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', (e) => {
-            productCheckboxes.forEach(cb => cb.checked = e.target.checked);
-            toggleBulkActions();
-        });
-    }
-
-    productCheckboxes.forEach(cb => {
-        cb.addEventListener('change', toggleBulkActions);
-    });
-    
-    if(bulkActionSelect) {
-        bulkActionSelect.addEventListener('change', () => {
-            if (bulkActionButton) {
-                 bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText;
+        function toggleBulkActions() {
+            const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
+            if(bulkActionsContainer) {
+                bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
             }
+        }
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', (e) => {
+                productCheckboxes.forEach(cb => cb.checked = e.target.checked);
+                toggleBulkActions();
+            });
+        }
+
+        productCheckboxes.forEach(cb => {
+            cb.addEventListener('change', toggleBulkActions);
         });
-    }
-});
-</script>
-<script>
-function closePrintModal() {
-    const modalOverlay = document.getElementById('printModalOverlay');
-    if (modalOverlay) modalOverlay.style.display = 'none';
-}
-
-function openSingleItemPrintModal(button) {
-    const productData = { sku: button.dataset.sku, name: button.dataset.name, price: button.dataset.price, url: button.dataset.url };
-    const printers = JSON.parse('{{ printers_json|safe }}');
-    const modalOverlay = document.getElementById('printModalOverlay');
-    const modalTitle = document.getElementById('modalPrintTitle');
-    const modalProductInfo = document.getElementById('modalProductInfo');
-    const modalProductSku = document.getElementById('modalProductSku');
-    const modalProductName = document.getElementById('modalProductName');
-    const printersContainer = document.getElementById('modalPrintersContainer');
-
-    if (!modalOverlay || !printersContainer) {
-        showToast('Помилка: Структура модального вікна для друку не знайдена.', 'error');
-        return;
+        
+        if(bulkActionSelect) {
+            bulkActionSelect.addEventListener('change', () => {
+                if (bulkActionButton) {
+                    bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText;
+                }
+            });
+        }
+    });
+    </script>
+    <script>
+    function closePrintModal() {
+        const modalOverlay = document.getElementById('printModalOverlay');
+        if (modalOverlay) modalOverlay.style.display = 'none';
     }
 
-    modalTitle.textContent = 'Друк етикетки';
-    modalProductInfo.style.display = 'block';
-    modalProductSku.textContent = productData.sku;
-    modalProductName.textContent = productData.name;
-    printersContainer.innerHTML = '';
-    printersContainer.style.cssText = 'display: flex; gap: 15px; align-items: stretch; flex-wrap: wrap;';
+    function openSingleItemPrintModal(button) {
+        const productData = { sku: button.dataset.sku, name: button.dataset.name, price: button.dataset.price, url: button.dataset.url };
+        const printers = JSON.parse('{{ printers_json|safe }}');
+        const modalOverlay = document.getElementById('printModalOverlay');
+        const modalTitle = document.getElementById('modalPrintTitle');
+        const modalProductInfo = document.getElementById('modalProductInfo');
+        const modalProductSku = document.getElementById('modalProductSku');
+        const modalProductName = document.getElementById('modalProductName');
+        const printersContainer = document.getElementById('modalPrintersContainer');
 
-    if (printers.length > 0) {
-        printers.forEach((printer, index) => {
-            const form = document.createElement('form');
-            form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
-            form.onsubmit = (event) => submitPrintJob(event, "{{ url_for('main.execute_print') }}");
-            form.innerHTML = `
-                <div style="flex-grow: 1;">
-                    <input type="hidden" name="sku" value="${productData.sku}"><input type="hidden" name="name" value="${productData.name}"><input type="hidden" name="price" value="${productData.price}"><input type="hidden" name="product_url" value="${productData.url}"><input type="hidden" name="printer_id" value="${printer.id}"><input type="hidden" name="display_currency" class="display-currency-input" value="{{ cost_currency_code }}">
-                    <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">${printer.name} (${printer.label_size})</h4>
-                    <div class="form-group" style="margin-bottom: 10px;"><label>Кількість етикеток</label><input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;"></div>
-                    ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>Кількість для сортування</label><input type="number" name="sorting_quantity" min="1" required class="print-input" style="height: 35px;"></div>` : ''}
-                </div>
-                <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>
-            `;
-            printersContainer.appendChild(form);
-        });
-    } else {
-        printersContainer.innerHTML = '<p>Принтери не налаштовані.</p>';
+        if (!modalOverlay || !printersContainer) {
+            showToast('Помилка: Структура модального вікна для друку не знайдена.', 'error');
+            return;
+        }
+
+        modalTitle.textContent = 'Друк етикетки';
+        modalProductInfo.style.display = 'block';
+        modalProductSku.textContent = productData.sku;
+        modalProductName.textContent = productData.name;
+        printersContainer.innerHTML = '';
+        printersContainer.style.cssText = 'display: flex; gap: 15px; align-items: stretch; flex-wrap: wrap;';
+
+        if (printers.length > 0) {
+            printers.forEach((printer, index) => {
+                const form = document.createElement('form');
+                form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
+                form.onsubmit = (event) => submitPrintJob(event, "{{ url_for('main.execute_print') }}");
+                form.innerHTML = `
+                    <div style="flex-grow: 1;">
+                        <input type="hidden" name="sku" value="${productData.sku}"><input type="hidden" name="name" value="${productData.name}"><input type="hidden" name="price" value="${productData.price}"><input type="hidden" name="product_url" value="${productData.url}"><input type="hidden" name="printer_id" value="${printer.id}"><input type="hidden" name="display_currency" class="display-currency-input" value="{{ cost_currency_code }}">
+                        <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">${printer.name} (${printer.label_size})</h4>
+                        <div class="form-group" style="margin-bottom: 10px;"><label>Кількість етикеток</label><input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;"></div>
+                        ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>Кількість для сортування</label><input type="number" name="sorting_quantity" min="1" required class="print-input" style="height: 35px;"></div>` : ''}
+                    </div>
+                    <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>
+                `;
+                printersContainer.appendChild(form);
+            });
+        } else {
+            printersContainer.innerHTML = '<p>Принтери не налаштовані.</p>';
+        }
+        modalOverlay.style.display = 'flex';
     }
-    modalOverlay.style.display = 'flex';
-}
-</script>
+    </script>
 {% endblock %}

@@ -94,3 +94,67 @@ class Currency(db.Model):
 class Setting(db.Model):
     key = db.Column(db.String(50), primary_key=True)
     value = db.Column(db.String(255), nullable=False)
+
+# --- ▼▼▼ ДОДАЙТЕ ЦЕЙ КОД В КІНЕЦЬ ФАЙЛУ ▼▼▼ ---
+
+class AnalyticsImport(db.Model):
+    """Модель для зберігання інформації про імпортовані файли аналітики."""
+    id = db.Column(db.Integer, primary_key=True)
+    original_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(255), unique=True, nullable=False)
+    import_date = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    data_period_start = db.Column(db.Date, nullable=True)
+    data_period_end = db.Column(db.Date, nullable=True)
+    
+    # Зв'язок для каскадного видалення
+    analytics_data = db.relationship('AnalyticsData', backref='import_source', lazy=True, cascade="all, delete-orphan")
+
+class AnalyticsData(db.Model):
+    """Модель для зберігання одного рядка даних з файлу аналітики."""
+    id = db.Column(db.Integer, primary_key=True)
+    import_id = db.Column(db.Integer, db.ForeignKey('analytics_import.id'), nullable=False)
+    
+    # Зберігаємо всі дані як текст, щоб уникнути помилок типів
+    analytics_creation_date = db.Column(db.String(50))
+    analytics_last_name = db.Column(db.String(100))
+    analytics_first_name = db.Column(db.String(100))
+    analytics_middle_name = db.Column(db.String(100))
+    analytics_phone = db.Column(db.String(50))
+    analytics_total_sum = db.Column(db.String(50))
+    analytics_payment_method = db.Column(db.String(100))
+    analytics_delivery_method = db.Column(db.String(100))
+    analytics_shipping_address = db.Column(db.Text)
+    analytics_tracking_number = db.Column(db.String(100))
+    analytics_delivery_status = db.Column(db.String(100))
+    analytics_status = db.Column(db.String(100))
+    analytics_sale_date = db.Column(db.String(50))
+    analytics_manager = db.Column(db.String(100))
+    analytics_website = db.Column(db.String(100))
+    analytics_comment = db.Column(db.Text)
+    analytics_paid = db.Column(db.String(50))
+    analytics_commission = db.Column(db.String(50))
+    analytics_counterparty = db.Column(db.String(100))
+    analytics_ad_campaign = db.Column(db.String(100))
+    analytics_product_name = db.Column(db.String(255))
+    analytics_product_description = db.Column(db.Text)
+    analytics_product_id = db.Column(db.String(100))
+    analytics_product_sku = db.Column(db.String(100), index=True) # Індекс для швидкого пошуку
+    analytics_product_price_per_unit = db.Column(db.String(50))
+    analytics_product_quantity = db.Column(db.String(50))
+    analytics_product_discount = db.Column(db.String(50))
+    analytics_product_sum = db.Column(db.String(50))
+    analytics_product_stock_balance = db.Column(db.String(50))
+    analytics_product_manufacturer = db.Column(db.String(100))
+    analytics_product_supplier = db.Column(db.String(100))
+    analytics_product_note = db.Column(db.Text)
+    analytics_product_warehouse = db.Column(db.String(100))
+    analytics_product_kolomyia = db.Column(db.String(100))
+    analytics_product_chernivtsi = db.Column(db.String(100))
+    analytics_product_cost_price = db.Column(db.String(50))
+    analytics_product_barcode = db.Column(db.String(100))
+    analytics_product_commission = db.Column(db.String(50))
+    analytics_product_upsell = db.Column(db.String(100))
+    analytics_product_tags = db.Column(db.Text)
+
+    # Поле для зберігання всіх даних рядка у форматі JSON
+    raw_data = db.Column(db.Text)

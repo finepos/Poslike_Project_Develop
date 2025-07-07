@@ -47,24 +47,19 @@
     <h1>Прихідна накладна №{{ document.get('id', 'N/A') }} від {{ document.get('date', 'N/A').split(' ')[0].split('-')|reverse|join('.') }}</h1>
 
     <div style="margin: 20px 0; display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; gap: 10px; align-items: center;">
+        <div style="display: flex; gap: 20px; align-items: center;">
             <a href="{{ url_for('main.salesdrive_index') }}" class="button button-secondary">&larr; Повернутися до списку</a>
             <button type="button" class="button print-btn" data-doc-id="{{ document.get('id') }}">Друкувати накладну</button>
+            <strong style="font-size: 1.1em;">Валюта закупки: {{ cost_currency_code }}</strong>
         </div>
         
         <div class="bulk-actions-wrapper">
-            <div id="bulkActionsContainer" style="display: none; gap: 10px; flex-wrap: nowrap; align-items: baseline;">
-                <select name="action" id="bulkActionSelect" style="height: 38px;" form="bulkActionForm">
-                    <option value="export_xls" data-btn-text="Експорт XLS">Експорт XLS</option>
-                </select>
-                <button type="submit" id="bulkActionButton" class="button" style="min-width: 150px;" form="bulkActionForm">Експорт XLS</button>
-            </div>
+            <form method="POST" action="{{ url_for('main.salesdrive_export_xls') }}" id="bulkActionForm" style="display: none;">
+                <input type="hidden" name="doc_id" value="{{ doc_id }}">
+                <button type="submit" class="button">Експорт XLS</button>
+            </form>
         </div>
     </div>
-    
-    <form method="POST" action="{{ url_for('main.salesdrive_export_xls') }}" id="bulkActionForm">
-        <input type="hidden" name="currency_code" value="{{ cost_currency_code }}">
-    </form>
 
     <table>
         <thead>
@@ -82,15 +77,10 @@
         {% for item in document.get('documentItems', []) %}
             <tr>
                 {% set item_json = {
-                    'sku': item.get('product', {}).get('sku', 'N/A'),
-                    'name': item.get('product', {}).get('nameTranslate', item.get('description', 'N/A')),
-                    'quantity': (item.get('count')|float)|int,
-                    'price': item.get('price', 0)|float,
-                    'sum': item.get('sum', 0)|float,
-                    'discount': item.get('product', {}).get('discount', 0)|float,
-                    'discountPeriodFrom': item.get('product', {}).get('discountPeriodFrom'),
-                    'discountPeriodTo': item.get('product', {}).get('discountPeriodTo')
+                    'product': item.get('product', {}),
+                    'count': (item.get('count')|float)|int
                 } | tojson %}
+
                 <td style="text-align: center;">
                     <input type="checkbox" name="selected_products" class="product-checkbox" value='{{ item_json }}' form="bulkActionForm">
                 </td>
@@ -126,30 +116,6 @@
 {% include 'components/modals.html' %}
 {% include 'components/salesdrive_print_modal.html' %}
 
-
-<div id="exportWithCurrencyModal" class="modal-overlay">
-    <div class="modal-content" style="max-width: 400px;">
-        <span class="modal-close" onclick="document.getElementById('exportWithCurrencyModal').style.display = 'none'">&times;</span>
-        <h3>Експорт в XLS</h3>
-        <p>Оберіть валюту для експорту ціни закупки.</p>
-        <form id="exportWithCurrencyForm" method="POST" action="{{ url_for('main.salesdrive_export_xls') }}">
-            <input type="hidden" name="source_currency_id" value="{{ document.currencyId }}">
-            <div id="hidden-products-container"></div>
-
-            <div class="form-group">
-                <label for="export_currency">Валюта</label>
-                <select name="export_currency" required>
-                    {% if available_currencies %}
-                        {% for currency in available_currencies %}
-                        <option value="{{ currency.code }}">{{ currency.code }}</option>
-                        {% endfor %}
-                    {% endif %}
-                </select>
-            </div>
-            <button type="submit" class="button" style="width: 100%;">Експортувати</button>
-        </form>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -158,49 +124,14 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     // --- Логіка для масових дій (експорт) ---
-    const bulkActionForm = document.getElementById('bulkActionForm');
-    const bulkActionSelect = document.getElementById('bulkActionSelect');
-    const bulkActionButton = document.getElementById('bulkActionButton');
-
-    if (bulkActionButton) {
-        bulkActionButton.addEventListener('click', (e) => {
-            e.preventDefault(); // Завжди зупиняємо стандартну поведінку кнопки
-
-            const selectedAction = bulkActionSelect.value;
-            if (selectedAction === 'export_xls') {
-                const selectedCheckboxes = document.querySelectorAll('.product-checkbox:checked');
-                if (selectedCheckboxes.length === 0) {
-                    showToast('Будь ласка, оберіть хоча б один товар для експорту.', 'error');
-                    return;
-                }
-
-                // Наповнюємо прихованими даними форму в модальному вікні
-                const hiddenContainer = document.getElementById('hidden-products-container');
-                hiddenContainer.innerHTML = ''; // Очищуємо від попередніх виборів
-
-                selectedCheckboxes.forEach(checkbox => {
-                    const hiddenInput = document.createElement('input');
-                    hiddenInput.type = 'hidden';
-                    hiddenInput.name = 'selected_products';
-                    hiddenInput.value = checkbox.value;
-                    hiddenContainer.appendChild(hiddenInput);
-                });
-
-                // Показуємо модальне вікно
-                document.getElementById('exportWithCurrencyModal').style.display = 'flex';
-            }
-        });
-    }
-
-    // --- Логіка для виділення всіх товарів ---
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     const productCheckboxes = document.querySelectorAll('.product-checkbox');
-    const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+    const bulkActionForm = document.getElementById('bulkActionForm');
 
     function toggleBulkActions() {
         const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
-        if(bulkActionsContainer) {
-            bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
+        if(bulkActionForm) {
+            bulkActionForm.style.display = anyChecked ? 'flex' : 'none';
         }
     }
 
@@ -214,59 +145,65 @@ document.addEventListener('DOMContentLoaded', () => {
     productCheckboxes.forEach(cb => {
         cb.addEventListener('change', toggleBulkActions);
     });
-
-    // Ініціалізуємо стан кнопок при завантаженні сторінки
-    toggleBulkActions();
+    
+    // Ініціалізуємо стан кнопки при завантаженні сторінки
+    toggleBulkActions(); 
 });
-    </script>
-    <script>
-    function closePrintModal() {
-        const modalOverlay = document.getElementById('printModalOverlay');
-        if (modalOverlay) modalOverlay.style.display = 'none';
+
+
+// --- Логіка для друку окремого товару ---
+function closePrintModal() {
+    const modalOverlay = document.getElementById('printModalOverlay');
+    if (modalOverlay) modalOverlay.style.display = 'none';
+}
+
+function openSingleItemPrintModal(button) {
+    const productData = { sku: button.dataset.sku, name: button.dataset.name, price: button.dataset.price, url: button.dataset.url };
+    const printers = JSON.parse('{{ printers_json|safe }}');
+    const modalOverlay = document.getElementById('printModalOverlay');
+    const modalTitle = document.getElementById('modalPrintTitle');
+    const modalProductInfo = document.getElementById('modalProductInfo');
+    const modalProductSku = document.getElementById('modalProductSku');
+    const modalProductName = document.getElementById('modalProductName');
+    const printersContainer = document.getElementById('modalPrintersContainer');
+
+    if (!modalOverlay || !printersContainer) {
+        showToast('Помилка: Структура модального вікна для друку не знайдена.', 'error');
+        return;
     }
 
-    function openSingleItemPrintModal(button) {
-        const productData = { sku: button.dataset.sku, name: button.dataset.name, price: button.dataset.price, url: button.dataset.url };
-        const printers = JSON.parse('{{ printers_json|safe }}');
-        const modalOverlay = document.getElementById('printModalOverlay');
-        const modalTitle = document.getElementById('modalPrintTitle');
-        const modalProductInfo = document.getElementById('modalProductInfo');
-        const modalProductSku = document.getElementById('modalProductSku');
-        const modalProductName = document.getElementById('modalProductName');
-        const printersContainer = document.getElementById('modalPrintersContainer');
+    modalTitle.textContent = 'Друк етикетки';
+    modalProductInfo.style.display = 'block';
+    modalProductSku.textContent = productData.sku;
+    modalProductName.textContent = productData.name;
+    printersContainer.innerHTML = '';
+    printersContainer.style.cssText = 'display: flex; gap: 15px; align-items: stretch; flex-wrap: wrap;';
 
-        if (!modalOverlay || !printersContainer) {
-            showToast('Помилка: Структура модального вікна для друку не знайдена.', 'error');
-            return;
-        }
-
-        modalTitle.textContent = 'Друк етикетки';
-        modalProductInfo.style.display = 'block';
-        modalProductSku.textContent = productData.sku;
-        modalProductName.textContent = productData.name;
-        printersContainer.innerHTML = '';
-        printersContainer.style.cssText = 'display: flex; gap: 15px; align-items: stretch; flex-wrap: wrap;';
-
-        if (printers.length > 0) {
-            printers.forEach((printer, index) => {
-                const form = document.createElement('form');
-                form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
-                form.onsubmit = (event) => submitPrintJob(event, "{{ url_for('main.execute_print') }}");
-                form.innerHTML = `
-                    <div style="flex-grow: 1;">
-                        <input type="hidden" name="sku" value="${productData.sku}"><input type="hidden" name="name" value="${productData.name}"><input type="hidden" name="price" value="${productData.price}"><input type="hidden" name="product_url" value="${productData.url}"><input type="hidden" name="printer_id" value="${printer.id}"><input type="hidden" name="display_currency" class="display-currency-input" value="{{ cost_currency_code }}">
-                        <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">${printer.name} (${printer.label_size})</h4>
-                        <div class="form-group" style="margin-bottom: 10px;"><label>Кількість етикеток</label><input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;"></div>
-                        ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>Кількість для сортування</label><input type="number" name="sorting_quantity" min="1" required class="print-input" style="height: 35px;"></div>` : ''}
-                    </div>
-                    <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>
-                `;
-                printersContainer.appendChild(form);
-            });
-        } else {
-            printersContainer.innerHTML = '<p>Принтери не налаштовані.</p>';
-        }
-        modalOverlay.style.display = 'flex';
+    if (printers.length > 0) {
+        printers.forEach((printer, index) => {
+            const form = document.createElement('form');
+            form.style.cssText = `flex: 1 1 250px; border: 1px solid #eee; padding: 15px; border-radius: 8px; background-color: ${index % 2 === 0 ? '#fff' : '#f8f9fa'}; display: flex; flex-direction: column;`;
+            form.onsubmit = (event) => submitPrintJob(event, "{{ url_for('main.execute_print') }}");
+            form.innerHTML = `
+                <div style="flex-grow: 1;">
+                    <input type="hidden" name="sku" value="${productData.sku}">
+                    <input type="hidden" name="name" value="${productData.name}">
+                    <input type="hidden" name="price" value="${productData.price}">
+                    <input type="hidden" name="product_url" value="${productData.url}">
+                    <input type="hidden" name="printer_id" value="${printer.id}">
+                    <input type="hidden" name="display_currency" class="display-currency-input" value="{{ cost_currency_code }}">
+                    <h4 style="text-align: center; margin-top: 0; margin-bottom: 15px; font-size: 1.1em;">${printer.name} (${printer.label_size})</h4>
+                    <div class="form-group" style="margin-bottom: 10px;"><label>Кількість етикеток</label><input type="number" name="quantity" value="1" min="1" required class="print-input" style="height: 35px;"></div>
+                    ${printer.is_for_sorting ? `<div class="form-group" style="margin-bottom: 10px;"><label>Кількість для сортування</label><input type="number" name="sorting_quantity" min="1" required class="print-input" style="height: 35px;"></div>` : ''}
+                </div>
+                <div style="margin-top: auto;"><button type="submit" class="button" style="height: 35px; width: 100%;">Друк</button></div>
+            `;
+            printersContainer.appendChild(form);
+        });
+    } else {
+        printersContainer.innerHTML = '<p>Принтери не налаштовані.</p>';
     }
-    </script>
+    modalOverlay.style.display = 'flex';
+}
+</script>
 {% endblock %}

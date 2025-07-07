@@ -5,7 +5,8 @@ from flask import render_template, current_app, flash, redirect, url_for, reques
 from openpyxl import Workbook
 from openpyxl.styles import Alignment
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta # Додайте цей імпорт
 
 from . import bp
 from ..models import Setting, Printer, PrintJob, Currency
@@ -146,62 +147,60 @@ def salesdrive_index():
     return render_template('salesdrive_list.html', documents=documents, pagination_info=pagination_info, printers=printers)
 
 
+# ▼▼▼ ПОЧАТОК: ПОВНІСТЮ ЗАМІНІТЬ ІСНУЮЧУ ФУНКЦІЮ ▼▼▼
 @bp.route('/salesdrive/document/<int:doc_id>')
 def salesdrive_document_detail(doc_id):
-    # ... (код цієї функції залишається без змін) ...
+    """
+    Відображає детальну інформацію про прихідну накладну,
+    включаючи назву валюти закупки.
+    """
     try:
         printers = Printer.query.order_by(Printer.is_default.desc(), Printer.name).all()
         printers_json = json.dumps([p.to_dict() for p in printers])
-        
+
         session, error = _get_authenticated_session()
         if error:
-            flash(error, 'danger')
-            return redirect(url_for('main.salesdrive_index'))
+            raise Exception(error)
 
         domain = Setting.query.get('salesdrive_domain').value
         detail_url = f"https://{domain}.salesdrive.me/document-arrival-product/{doc_id}/?activeAccount=1&formId=1&id={doc_id}"
-
         headers = {'Accept': 'application/json, text/plain, */*'}
+
         response = session.get(detail_url, headers=headers, timeout=15)
-
-        if 'auth.salesdrive.me' in response.url:
-            flash('Cookie застаріли. Виконується повторний вхід...', 'warning')
+        if 'auth.salesdrive.me' in response.url: # Перевірка на застарілі куки
             session, error = _get_authenticated_session(force_login=True)
-            if error:
-                flash(error, 'danger')
-                return redirect(url_for('main.salesdrive_index'))
-
+            if error: raise Exception(error)
             response = session.get(detail_url, headers=headers, timeout=15)
-
         response.raise_for_status()
 
         detail_data = response.json()
         document = detail_data.get('response', {}).get('item')
-
         if not document:
-            raise Exception("Структура відповіді не містить детальних даних про документ.")
+            raise Exception("Структура відповіді API не містить даних про документ.")
 
+        # Визначаємо валюту закупки з даних API
         cost_currency_code = 'N/A'
         currency_id = document.get('currencyId')
         currency_options = detail_data.get('response', {}).get('meta', {}).get('fields', {}).get('currencyId', {}).get('options', [])
-
-        symbol_map = {'$': 'USD', '€': 'EUR', 'грн': 'UAH'}
-
-        for option in currency_options:
-            if str(option.get('value')) == str(currency_id):
-                abbr = option.get('text', 'N/A')
-                cost_currency_code = symbol_map.get(abbr, abbr)
-                break
+        
+        # Створюємо словник для пошуку { value: text }
+        currency_map = {str(opt['value']): opt['text'] for opt in currency_options}
+        
+        # Знаходимо текстове представлення валюти
+        cost_currency_code = currency_map.get(str(currency_id), 'N/A')
 
         return render_template('salesdrive_document_detail.html',
                                document=document,
                                cost_currency_code=cost_currency_code,
                                printers=printers,
-                               printers_json=printers_json)
+                               printers_json=printers_json,
+                               doc_id=doc_id)
 
     except Exception as e:
+        current_app.logger.error(f"Помилка завантаження деталей документа: {e}", exc_info=True)
         flash(f'Сталася помилка при завантаженні деталей документа: {e}', 'danger')
         return redirect(url_for('main.salesdrive_index'))
+# ▲▲▲ КІНЕЦЬ ЗАМІНИ ФУНКЦІЇ ▲▲▲
 
 
 @bp.route('/salesdrive/print-invoice', methods=['POST'])
@@ -287,86 +286,130 @@ def salesdrive_print_invoice():
         return jsonify({'status': 'error', 'message': f'Помилка сервера: {e}'}), 500
 
 
-# ▼▼▼ ПОЧАТОК: ЗАМІНІТЬ ІСНУЮЧУ ФУНКЦІЮ НА ЦЕЙ КОД ▼▼▼
+# ▼▼▼ ПОЧАТОК: ПОВНІСТЮ ЗАМІНІТЬ ІСНУЮЧУ ФУНКЦІЮ НА ЦЮ ▼▼▼
 @bp.route('/salesdrive/export-xls', methods=['POST'])
 def salesdrive_export_xls():
     """
-    Експортує вибрані товари з накладної в XLS, конвертуючи собівартість
-    в обрану користувачем валюту.
+    Генерує XLS файл, коректно обробляючи відсоткові та фіксовані знижки,
+    та встановлює відповідний формат комірок.
     """
     selected_products_json = request.form.getlist('selected_products')
-    export_currency_code = request.form.get('export_currency')
-    source_currency_id_str = request.form.get('source_currency_id')
+    doc_id = request.form.get('doc_id')
 
-    if not all([selected_products_json, export_currency_code, source_currency_id_str]):
-        flash('Помилка: Не обрано товари або валюту для експорту.', 'warning')
+    if not selected_products_json or not doc_id:
+        flash('Не обрано товари для експорту або відсутній ID документа.', 'warning')
         return redirect(request.referrer)
 
     try:
-        # Отримуємо всі курси валют з БД
-        currencies = Currency.query.all()
-        currency_id_map = {str(c.id): c for c in currencies}
-        currency_code_map = {c.code: c for c in currencies}
-
-        source_currency = currency_id_map.get(source_currency_id_str)
-        export_currency = currency_code_map.get(export_currency_code)
-
-        if not source_currency or not export_currency:
-            flash('Помилка: Не вдалося знайти вказані валюти в базі даних.', 'danger')
-            return redirect(request.referrer)
+        # --- Отримання даних з SalesDrive ---
+        session, error = _get_authenticated_session()
+        if error: raise Exception(error)
+        
+        domain = Setting.query.get('salesdrive_domain').value
+        detail_url = f"https://{domain}.salesdrive.me/document-arrival-product/{doc_id}/?activeAccount=1&formId=1&id={doc_id}"
+        response = session.get(detail_url, headers={'Accept': 'application/json'}, timeout=15)
+        response.raise_for_status()
+        
+        detail_data = response.json()
+        currency_options = detail_data.get('response', {}).get('meta', {}).get('fields', {}).get('currencyId', {}).get('options', [])
+        currency_name_map = {str(opt['value']): opt['text'] for opt in currency_options}
+        # --- Кінець отримання даних ---
 
         wb = Workbook()
         ws = wb.active
         ws.title = "SalesDrive Export"
-
-        # Створюємо заголовки згідно з вашим запитом
-        headers = [
+        ws.append([
             'ID товару/послуги', 'Назва (UA)', 'SKU', 'Ціна', 'Ціна - Валюта',
             'Знижка', 'Ціна зі знижкою', 'Період знижки від', 'Період знижки до',
             'Собівартість', 'Собівартість - Валюта', 'К-ть'
-        ]
-        ws.append(headers)
+        ])
 
-        # Обробляємо кожен вибраний товар
+        today = date.today()
+        three_years_later = today + relativedelta(years=3)
+
         for product_json_str in selected_products_json:
-            product = json.loads(product_json_str)
-            original_cost = float(product.get('price', 0))
+            item_data = json.loads(product_json_str)
+            product_attrs = item_data.get('product', {})
 
-            # Конвертація: (Собівартість * Курс Вихідної Валюти) / Курс Цільової Валюти
-            cost_in_uah = original_cost * source_currency.rate
-            converted_cost = cost_in_uah / export_currency.rate if export_currency.rate != 0 else 0
+            price = float(product_attrs.get('defaultPrice', 0))
+            
+            # --- ВИПРАВЛЕНО: Нова логіка розрахунку знижки ---
+            is_percent_discount = product_attrs.get('percentDiscount') == '1'
+            discount_raw_value = float(product_attrs.get('discount', 0))
+            
+            price_with_discount = price
+            discount_for_cell = 0
 
-            # Заповнюємо рядок даними
-            row_data = [
-                product.get('productId'),
-                product.get('name'),
-                product.get('sku'),
-                '',  # Поле 'Ціна' не було вказано, звідки брати
-                '',  # Поле 'Ціна - Валюта'
-                '',  # Поле 'Знижка' відсутнє в даних накладної
-                '',  # Поле 'Ціна зі знижкою'
-                '',  # Поле 'Період знижки від'
-                '',  # Поле 'Період знижки до'
-                f'{converted_cost:.4f}'.replace('.', ','),  # Конвертована собівартість
-                export_currency_code,                       # Валюта собівартості
-                product.get('quantity')
+            if is_percent_discount and discount_raw_value > 0:
+                # Знижка у відсотках
+                price_with_discount = price * (1 - discount_raw_value / 100)
+                discount_for_cell = discount_raw_value / 100  # Зберігаємо як десятковий дріб (напр. 0.04)
+            elif discount_raw_value > 0:
+                # Фіксована знижка
+                price_with_discount = price - discount_raw_value
+                discount_for_cell = discount_raw_value
+            # --- Кінець нової логіки ---
+
+            # --- Форматування дат ---
+            date_from_raw = product_attrs.get('discountPeriodFrom')
+            date_to_raw = product_attrs.get('discountPeriodTo')
+
+            if date_from_raw and len(date_from_raw) >= 10:
+                date_from = datetime.strptime(date_from_raw[:10], '%Y-%m-%d').strftime('%d.%m.%Y')
+            else:
+                date_from = today.strftime('%d.%m.%Y')
+
+            if date_to_raw and len(date_to_raw) >= 10:
+                date_to = datetime.strptime(date_to_raw[:10], '%Y-%m-%d').strftime('%d.%m.%Y')
+            else:
+                date_to = three_years_later.strftime('%d.%m.%Y')
+            
+            # --- Визначення собівартості та її валюти ---
+            cost_price_value = product_attrs.get('costPriceCurrency')
+            if not cost_price_value or float(cost_price_value) == 0:
+                cost_price_value = product_attrs.get('costPrice', 0)
+
+            cost_price_currency_id_raw = product_attrs.get('costPriceCurrencyId')
+            if cost_price_currency_id_raw == 0 or cost_price_currency_id_raw is None:
+                cost_price_currency_name = 'UAH'
+            else:
+                cost_price_currency_name = currency_name_map.get(str(cost_price_currency_id_raw), 'N/A')
+
+            row = [
+                product_attrs.get('parameter'),
+                product_attrs.get('nameTranslate'),
+                product_attrs.get('sku'),
+                f"{price:.2f}".replace('.', ','),
+                product_attrs.get('defaultPriceCurrency', 'UAH'),
+                discount_for_cell, # Вставляємо підготовлене значення
+                f"{price_with_discount:.2f}".replace('.', ','),
+                date_from,
+                date_to,
+                f"{float(cost_price_value):.4f}".replace('.', ','),
+                cost_price_currency_name,
+                item_data.get('count')
             ]
-            ws.append(row_data)
+            ws.append(row)
+            
+            # ВИПРАВЛЕНО: Встановлюємо формат комірки, якщо знижка відсоткова
+            if is_percent_discount:
+                # Отримуємо комірку 'Знижка' (6-та колонка) щойно доданого рядка
+                discount_cell = ws.cell(row=ws.max_row, column=6) 
+                discount_cell.number_format = '0.00%'
 
     except Exception as e:
-        current_app.logger.error(f"Помилка під час генерації XLS: {e}")
-        flash(f'Сталася помилка під час створення файлу: {e}', 'danger')
+        current_app.logger.error(f"Помилка під час генерації XLS: {e}", exc_info=True)
+        flash(f'Сталася критична помилка під час створення файлу: {e}', 'danger')
         return redirect(request.referrer)
 
-    # Відправляємо згенерований файл користувачу
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-    filename = f"salesdrive_products_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    filename = f"salesdrive_export_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.xlsx"
     return send_file(
         buffer,
         as_attachment=True,
         download_name=filename,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-# ▲▲▲ КІНЕЦЬ: ЗАМІНІТЬ ІСНУЮЧУ ФУНКЦІЮ НА ЦЕЙ КОД ▲▲▲
+# ▲▲▲ КІНЕЦЬ ЗАМІНИ ФУНКЦІЇ ▲▲▲

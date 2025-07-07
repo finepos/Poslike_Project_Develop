@@ -8,6 +8,7 @@ from ..models import Product, Printer, PrintJob, Currency
 from ..printing import generate_zpl_code, check_printer_status
 
 
+# ▼▼▼ ПОЧАТОК: ПОВНІСТЮ ЗАМІНІТЬ ІСНУЮЧУ ФУНКЦІЮ НА ЦЮ ▼▼▼
 @bp.route('/execute-print', methods=['POST'])
 def execute_print():
     try:
@@ -19,21 +20,26 @@ def execute_print():
         product_id = request.form.get('product_id')
         product = None
 
-        # Універсальна логіка для будь-якого товару
         if product_id:
             # Стандартний друк з головної сторінки
             product = Product.query.get(product_id)
             if not product:
                  return jsonify({'status': 'error', 'message': 'Товар не знайдено!'}), 404
         else:
-            # Друк зі сторінки накладної (без ID)
-            # Створюємо "псевдо-продукт" на льоту з даних форми
+            # Друк зі сторінки накладної (без ID товару в базі)
+            # ВИПРАВЛЕНО: Створюємо словник з усіма потрібними даними для ZPL
+            product_data_for_zpl = {
+                'product_sku': request.form.get('sku'),
+                'product_name': request.form.get('name'),
+                'product_url': request.form.get('product_url', '')
+            }
+            # Створюємо "псевдо-продукт" на льоту
             product = type('obj', (object,), {
                 'id': None,
                 'sku': request.form.get('sku'),
                 'name': request.form.get('name'),
                 'price': float(request.form.get('price', 0)),
-                'xml_data': json.dumps({'product_url': request.form.get('product_url', '')})
+                'xml_data': json.dumps(product_data_for_zpl, ensure_ascii=False)
             })
 
         quantity = int(request.form.get('quantity', 1))
@@ -43,8 +49,6 @@ def execute_print():
         currency = Currency.query.filter_by(code=display_currency_code).first()
         rate = currency.rate if currency else 1.0
         
-        # Конвертуємо ціну, лише якщо це товар з бази даних.
-        # Для товарів з накладної ціна вже передається в потрібній валюті.
         converted_price = (product.price / rate) if product_id and rate > 0 else product.price
         
         zpl_code = generate_zpl_code(printer, product, sorting_quantity, quantity, override_price=converted_price)
@@ -58,6 +62,7 @@ def execute_print():
         db.session.rollback()
         current_app.logger.error(f"Print execution error: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': f'Помилка сервера: {e}'}), 500
+# ▲▲▲ КІНЕЦЬ ЗАМІНИ ФУНКЦІЇ ▲▲▲
 
 
 @bp.route('/settings/clear-print-queue/<int:printer_id>', methods=['POST'])

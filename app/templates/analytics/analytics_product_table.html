@@ -32,7 +32,15 @@
                     </form>
                 </td>
                 <td style="text-align: center;">{{ item.total_sold or 0 }}</td>
-                <td style="text-align: center;">{{ item.request_count or 0 }}</td>
+                <td style="text-align: center;">
+                    {% if item.request_count > 0 %}
+                        <a href="#" class="request-count-link" data-sku="{{ item.product.sku }}" style="text-decoration: underline; color: #007bff; font-weight: bold;">
+                            {{ item.request_count }}
+                        </a>
+                    {% else %}
+                        0
+                    {% endif %}
+                </td>
                 <td style="min-width: 210px;">
                     <div style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center;">
                         <a href="{{ url_for('main.add_in_transit_form', product_id=product.id) }}" class="button" title="Додати в дорозі">+</a>

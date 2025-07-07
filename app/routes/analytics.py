@@ -6,7 +6,7 @@ import os
 import pandas as pd
 from datetime import datetime
 from werkzeug.utils import secure_filename
-from flask import render_template, request, flash, redirect, url_for, current_app
+from flask import render_template, request, flash, redirect, url_for, current_app, jsonify
 
 from sqlalchemy import or_, func
 
@@ -209,7 +209,6 @@ def analytics_index():
                            DEFAULT_PER_PAGE=DEFAULT_PER_PAGE)
 
 
-# ▼▼▼ ВІДНОВЛЕНІ МАРШРУТИ ▼▼▼
 @bp.route('/analytics/settings', methods=['GET', 'POST'])
 def analytics_settings():
     """Сторінка налаштувань та імпорту."""
@@ -260,7 +259,16 @@ def analytics_settings():
                     data_row = AnalyticsData(import_id=new_import.id, raw_data=row.to_json())
                     for col_name, model_field in COLUMN_MAPPING.items():
                         if col_name in row and pd.notna(row[col_name]):
-                            setattr(data_row, model_field, str(row[col_name]))
+                            # ▼▼▼ ОНОВЛЕНА ЛОГІКА ФОРМАТУВАННЯ ТЕЛЕФОНІВ ▼▼▼
+                            value = str(row[col_name])
+                            if col_name == 'Телефон [Контакт]':
+                                cleaned_phone = re.sub(r'\D', '', value)
+                                if len(cleaned_phone) == 10:
+                                    value = '38' + cleaned_phone
+                                else:
+                                    value = cleaned_phone
+                            setattr(data_row, model_field, value)
+                            # ▲▲▲ КІНЕЦЬ ОНОВЛЕННЯ ▲▲▲
                     db.session.add(data_row)
                 
                 db.session.commit()
@@ -274,6 +282,7 @@ def analytics_settings():
 
     imports = AnalyticsImport.query.order_by(AnalyticsImport.import_date.desc()).all()
     return render_template('analytics/settings.html', imports=imports)
+
 
 @bp.route('/analytics/delete/<int:import_id>', methods=['POST'])
 def analytics_delete(import_id):
@@ -291,3 +300,33 @@ def analytics_delete(import_id):
         flash(f'Помилка під час видалення: {e}', 'danger')
         
     return redirect(url_for('main.analytics_settings'))
+
+# ▼▼▼ НОВИЙ МАРШРУТ ДЛЯ ОТРИМАННЯ ЗАЯВОК ▼▼▼
+@bp.route('/api/analytics/applications/<string:sku>')
+def get_applications_for_sku(sku):
+    """API для отримання заявок за конкретним SKU."""
+    try:
+        product_info = AnalyticsData.query.filter_by(analytics_product_sku=sku).first()
+        product_name = product_info.analytics_product_name if product_info else "Назву не знайдено"
+
+        applications = AnalyticsData.query.filter_by(analytics_product_sku=sku).order_by(AnalyticsData.analytics_sale_date.desc()).all()
+        
+        apps_data = []
+        for app in applications:
+            apps_data.append({
+                'sale_date': app.analytics_sale_date,
+                'contact_name': f"{app.analytics_last_name or ''} {app.analytics_first_name or ''}".strip(),
+                'phone': app.analytics_phone,
+                'price_per_unit': app.analytics_product_price_per_unit,
+                'quantity': app.analytics_product_quantity,
+                'sum': app.analytics_product_sum
+            })
+
+        return jsonify({
+            'sku': sku,
+            'product_name': product_name,
+            'applications': apps_data
+            })
+    except Exception as e:
+        current_app.logger.error(f"Error fetching applications for SKU {sku}: {e}")
+        return jsonify({'error': str(e)}), 500

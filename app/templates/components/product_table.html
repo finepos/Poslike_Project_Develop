@@ -1,17 +1,15 @@
 <table>
     <thead>
         <tr>
-            <th style="width: 30px; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Обрати всі"></th>
-            <th>SKU</th> 
-            <th>Назва товару</th>
-            <th>
+            <th style="width: 3%; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Обрати всі"></th>
+            <th style="width: 12%;">SKU</th>
+            <th style="width: 35%;">Назва товару</th>
+            <th style="width: 6%;">
                 {% set price_sort_url_params = request.args.to_dict() %}
                 {% if sort_by == 'price' %}
-                    {# Якщо вже сортуємо, змінюємо напрямок #}
                     {% set next_order = 'asc' if sort_order == 'desc' else 'desc' %}
                     {% set _ = price_sort_url_params.update({'sort_by': 'price', 'sort_order': next_order}) %}
                 {% else %}
-                    {# При першому кліку сортуємо від найнижчої до найвищої #}
                     {% set _ = price_sort_url_params.update({'sort_by': 'price', 'sort_order': 'asc'}) %}
                 {% endif %}
                 <a href="{{ url_for('main.index', **price_sort_url_params) }}" style="color: black; text-decoration: none;">
@@ -25,14 +23,12 @@
                     {% endif %}
                 </a>
             </th>
-            <th>
+            <th style="width: 6%;">
                 {% set stock_sort_url_params = request.args.to_dict() %}
                 {% if sort_by == 'stock' %}
-                    {# Якщо вже сортуємо, змінюємо напрямок #}
                     {% set next_order = 'asc' if sort_order == 'desc' else 'desc' %}
                     {% set _ = stock_sort_url_params.update({'sort_by': 'stock', 'sort_order': next_order}) %}
                 {% else %}
-                    {# При першому кліку сортуємо від найбільшого до найменшого #}
                     {% set _ = stock_sort_url_params.update({'sort_by': 'stock', 'sort_order': 'desc'}) %}
                 {% endif %}
                 <a href="{{ url_for('main.index', **stock_sort_url_params) }}" style="color: black; text-decoration: none;">
@@ -46,11 +42,9 @@
                     {% endif %}
                 </a>
             </th>
-            <th>В дорозі</th>
-            <th>Мін. залишок</th> 
-            <th>Продаж/день</th> 
-            <th>Днів до закінчення</th> 
-            <th>Дії</th>
+            <th style="width: 6%;">В дорозі</th>
+            <th style="width: 8%;">Мін. залишок</th>
+            <th style="width: 17%;">Дії</th>
         </tr>
     </thead>
     <tbody>
@@ -59,26 +53,20 @@
             <tr class="{{ item.status_class }}" data-sku="{{ product.sku }}" data-name="{{ product.name }}">
                 <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox"></td>
                 <td>{{ product.sku }}</td>
-                <td style="max-width: 400px; word-wrap: break-word;">{{ product.name }}</td>
+                <td>{{ product.name }}</td>
                 <td class="product-price" data-base-price="{{ product.price }}">{{ "%.2f"|format(product.price) }}</td>
-                
                 <td style="text-align: center;"><b>{{ product.stock }}</b></td>
                 <td style="text-align: center;">{{ product.in_transit_quantity }}</td>
                 <td>
                     <form method="POST" action="{{ url_for('main.update_minimum_stock') }}" style="align-items: center; margin: 0;">
                         <input type="hidden" name="product_id" value="{{ product.id }}">
-
                         <input type="number" name="minimum_stock" value="{{ product.minimum_stock or '' }}" placeholder="--"
-                        style="width: 70px; padding: 5px; margin-right: 5px; margin-bottom: 0; height: 33px; box-sizing: border-box;">
-
+                               style="width: 70px; padding: 5px; margin-right: 5px; margin-bottom: 0; height: 33px; box-sizing: border-box;">
                         <button type="submit"
-                        style="padding: 5px 10px; height: 33px; box-sizing: border-box;">OK</button>
+                                style="padding: 5px 10px; height: 33px; box-sizing: border-box;">OK</button>
                     </form>
                 </td>
-
-                <td>{{ item.avg_sales_per_day }}</td>
-                <td>{{ item.days_left }}</td>
-                <td style="min-width: 210px;">
+                <td>
                     <div style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center;">
                         <a href="{{ url_for('main.add_in_transit_form', product_id=product.id) }}" class="button" title="Додати в дорозі">+</a>
                         <button type="button" class="button button-secondary" onclick="openPrintModal(this)" title="Друк етикетки">Друк</button>
@@ -90,7 +78,7 @@
                 </td>
             </tr>
         {% else %}
-            <tr><td colspan="10" style="text-align:center;">Товарів за вашим запитом не знайдено.</td></tr>
+            <tr><td colspan="8" style="text-align:center;">Товарів за вашим запитом не знайдено.</td></tr>
         {% endfor %}
     </tbody>
 </table>

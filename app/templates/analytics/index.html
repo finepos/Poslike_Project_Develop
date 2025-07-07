@@ -89,14 +89,35 @@
 
     <form method="POST" action="{{ url_for('main.bulk_actions') }}" id="bulkActionForm">
         <input type="hidden" name="display_currency" id="displayCurrencyInput" class="display-currency-input" value="UAH">
-
         {% include 'components/search_form.html' %}
-        
         {% include 'analytics/analytics_product_table.html' %}
-
     </form>
 
     <form method="GET" action="{{ url_for('main.analytics_index') }}" id="mainSearchForm"></form>
+    
+    <div id="applicationsModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 90%; width: 1200px;">
+            <span class="modal-close" onclick="closeApplicationsModal()">&times;</span>
+            <h2 id="applicationsModalTitle">Заявки для товару</h2>
+            <h3 id="applicationsModalSubtitle" style="color: #555; margin-top: -10px; font-weight: normal;"></h3>
+            <div style="max-height: 70vh; overflow-y: auto;">
+                <table id="applicationsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">#</th>
+                            <th style="width: 15%;">Дата продажу</th>
+                            <th>Прізвище та ім'я</th>
+                            <th style="width: 15%;">Телефон</th>
+                            <th style="width: 10%; text-align: right;">Ціна за од.</th>
+                            <th style="width: 10%; text-align: center;">К-ть</th>
+                            <th style="width: 10%; text-align: right;">Сума</th>
+                        </tr>
+                    </thead>
+                    <tbody id="applicationsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     {% include 'components/pagination.html' %}
     {% include 'components/modals.html' %}
@@ -105,4 +126,102 @@
 
 {% block scripts %}
     {% include 'components/scripts.html' %}
+
+    <script>
+        const applicationsModal = document.getElementById('applicationsModal');
+    
+        function closeApplicationsModal() {
+            if (applicationsModal) {
+                applicationsModal.style.display = 'none';
+            }
+        }
+    
+        if (applicationsModal) {
+            applicationsModal.addEventListener('click', (e) => {
+                if (e.target === applicationsModal) {
+                    closeApplicationsModal();
+                }
+            });
+        }
+    
+        document.querySelectorAll('.request-count-link').forEach(link => {
+            link.addEventListener('click', async (event) => {
+                event.preventDefault();
+                const sku = event.currentTarget.dataset.sku;
+                
+                try {
+                    const response = await fetch(`/api/analytics/applications/${sku}`);
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Не вдалося завантажити дані.');
+                    }
+                    const data = await response.json();
+    
+                    document.getElementById('applicationsModalTitle').textContent = `Заявки для товару: ${data.sku}`;
+                    document.getElementById('applicationsModalSubtitle').textContent = data.product_name;
+    
+                    const tableBody = document.getElementById('applicationsTableBody');
+                    tableBody.innerHTML = '';
+    
+                    if (data.applications && data.applications.length > 0) {
+                        data.applications.forEach((app, index) => {
+                            // ▼▼▼ ПОЧАТОК ЛОГІКИ ФОРМАТУВАННЯ ▼▼▼
+                            
+                            // 1. Форматування дати
+                            let formattedDate = '';
+                            if (app.sale_date) {
+                                try {
+                                    const date = new Date(app.sale_date);
+                                    if (!isNaN(date)) {
+                                        formattedDate = date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                    }
+                                } catch(e) { /* ігноруємо помилку, якщо дата невалідна */ }
+                            }
+
+                            // 2. Форматування телефону
+                            let phone = (app.phone || '').toString();
+                            if (phone.startsWith('38') && phone.length === 12) {
+                                phone = phone.substring(2);
+                            }
+                            const formattedPhone = phone.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4');
+
+                            // 3. Форматування кількості
+                            const quantity = parseFloat(app.quantity);
+                            const formattedQuantity = !isNaN(quantity) && quantity % 1 !== 0 ? quantity.toFixed(2) : (isNaN(quantity) ? '' : Math.trunc(quantity));
+
+                            // 4. Форматування суми
+                            const sum = parseFloat(app.sum);
+                            const formattedSum = isNaN(sum) ? '' : sum.toFixed(2);
+
+                            // ▲▲▲ КІНЕЦЬ ЛОГІКИ ФОРМАТУВАННЯ ▲▲▲
+
+                            const row = `
+                                <tr>
+                                    <td style="text-align: center;">${index + 1}</td>
+                                    <td>${formattedDate}</td>
+                                    <td>${app.contact_name || ''}</td>
+                                    <td>${formattedPhone}</td>
+                                    <td style="text-align: right;">${app.price_per_unit || ''}</td>
+                                    <td style="text-align: center;">${formattedQuantity}</td>
+                                    <td style="text-align: right;">${formattedSum}</td>
+                                </tr>
+                            `;
+                            tableBody.insertAdjacentHTML('beforeend', row);
+                        });
+                    } else {
+                        const row = `<tr><td colspan="7" style="text-align: center;">Для цього товару немає заявок.</td></tr>`;
+                        tableBody.innerHTML = row;
+                    }
+    
+                    if (applicationsModal) {
+                        applicationsModal.style.display = 'flex';
+                    }
+    
+                } catch (error) {
+                    console.error("Error fetching applications:", error);
+                    showToast(error.message, 'error');
+                }
+            });
+        });
+    </script>
 {% endblock %}

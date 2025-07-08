@@ -78,6 +78,49 @@
         #stockFilterSelect.has-selection {
             color: #000;
         }
+        
+        /* Стилі для детальної інформації */
+        .contact-name-link {
+            cursor: pointer;
+            color: #0056b3;
+            text-decoration: underline;
+        }
+        .contact-name-link:hover {
+            color: #007bff;
+        }
+        .client-phone-link {
+            cursor: pointer;
+            color: #0056b3;
+            text-decoration: underline;
+        }
+        .client-phone-link:hover {
+            color: #007bff;
+        }
+        .details-row > td {
+            background-color: #f8f9fa;
+            padding: 15px !important;
+        }
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .details-grid div {
+            line-height: 1.4;
+        }
+        .details-grid strong {
+            display: block;
+            color: #333;
+            margin-bottom: 3px;
+        }
+
+        /* ▼▼▼ ВИДАЛЕНО СТИЛЬ ДЛЯ КОЖНОГО ОКРЕМОГО РЯДКА... ▼▼▼ */
+        /* #clientAppsTable tbody tr:nth-child(even) { background-color: #f9f9f9; } */
+        
+        /* ▼▼▼ ...І ДОДАНО СТИЛЬ ДЛЯ ГРУПИ РЯДКІВ ▼▼▼ */
+        #clientAppsTable tbody tr.row-group-even {
+            background-color: #f9f9f9;
+        }
     </style>
     
     <div class="header-controls">
@@ -104,16 +147,45 @@
                 <table id="applicationsTable">
                     <thead>
                         <tr>
-                            <th style="width: 5%;">#</th>
-                            <th style="width: 15%;">Дата продажу</th>
+                            <th style="width: 5%; text-align: center;">#</th>
+                            <th style="width: 15%; text-align: center;">Дата продажу</th>
                             <th>Прізвище та ім'я</th>
-                            <th style="width: 15%;">Телефон</th>
-                            <th style="width: 10%; text-align: right;">Ціна за од.</th>
+                            <th style="width: 15%; text-align: center;">Телефон</th>
+                            <th style="width: 10%; text-align: center;">Ціна за од.</th>
                             <th style="width: 10%; text-align: center;">К-ть</th>
-                            <th style="width: 10%; text-align: right;">Сума</th>
+                            <th style="width: 10%; text-align: center;">Сума</th>
                         </tr>
                     </thead>
                     <tbody id="applicationsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="clientApplicationsModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 90%; width: 1400px;">
+            <span class="modal-close" onclick="closeClientApplicationsModal()">&times;</span>
+            <h2 id="clientAppsModalTitle">Всі заявки клієнта</h2>
+            <div style="max-height: 70vh; overflow-y: auto;">
+                <table id="clientAppsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%; text-align: center;">#</th>
+                            <th style="width: 10%; text-align: center;">Дата продажу</th>
+                            <th style="width: 15%;">SKU</th>
+                            <th>Назва товару</th>
+                            <th style="width: 8%; text-align: center;">К-ть</th>
+                            <th style="width: 10%; text-align: center;">Сума</th>
+                            <th style="width: 12%; text-align: center;">Загальна сума</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientAppsTableBody"></tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="6" style="text-align: right; font-weight: bold; padding: 10px;">Загальна сума всіх заявок:</td>
+                            <td id="clientAppsGrandTotal" style="text-align: center; font-weight: bold; padding: 10px;"></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
@@ -129,99 +201,166 @@
 
     <script>
         const applicationsModal = document.getElementById('applicationsModal');
+        const clientApplicationsModal = document.getElementById('clientApplicationsModal');
     
         function closeApplicationsModal() {
-            if (applicationsModal) {
-                applicationsModal.style.display = 'none';
-            }
+            if (applicationsModal) applicationsModal.style.display = 'none';
+        }
+        function closeClientApplicationsModal() {
+            if (clientApplicationsModal) clientApplicationsModal.style.display = 'none';
         }
     
-        if (applicationsModal) {
-            applicationsModal.addEventListener('click', (e) => {
-                if (e.target === applicationsModal) {
-                    closeApplicationsModal();
-                }
-            });
-        }
+        if (applicationsModal) applicationsModal.addEventListener('click', e => { if (e.target === applicationsModal) closeApplicationsModal(); });
+        if (clientApplicationsModal) clientApplicationsModal.addEventListener('click', e => { if (e.target === clientApplicationsModal) closeClientApplicationsModal(); });
     
+        // Обробник для вікна "Заявки для товару"
         document.querySelectorAll('.request-count-link').forEach(link => {
             link.addEventListener('click', async (event) => {
                 event.preventDefault();
                 const sku = event.currentTarget.dataset.sku;
-                
                 try {
                     const response = await fetch(`/api/analytics/applications/${sku}`);
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error || 'Не вдалося завантажити дані.');
-                    }
                     const data = await response.json();
-    
+                    
                     document.getElementById('applicationsModalTitle').textContent = `Заявки для товару: ${data.sku}`;
                     document.getElementById('applicationsModalSubtitle').textContent = data.product_name;
-    
                     const tableBody = document.getElementById('applicationsTableBody');
                     tableBody.innerHTML = '';
     
                     if (data.applications && data.applications.length > 0) {
                         data.applications.forEach((app, index) => {
-                            // ▼▼▼ ПОЧАТОК ЛОГІКИ ФОРМАТУВАННЯ ▼▼▼
-                            
-                            // 1. Форматування дати
                             let formattedDate = '';
-                            if (app.sale_date) {
-                                try {
-                                    const date = new Date(app.sale_date);
-                                    if (!isNaN(date)) {
-                                        formattedDate = date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                            if (app.sale_date) { try { const date = new Date(app.sale_date); if (!isNaN(date)) formattedDate = date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch(e) {} }
+                            
+                            const rawPhones = (app.phone || '').toString();
+                            const phoneLinks = rawPhones.split(',')
+                                .map(p => p.trim()).filter(p => p)
+                                .map(p => {
+                                    const cleaned = p.replace(/\D/g, '');
+                                    if (cleaned.length === 12 && cleaned.startsWith('38')) {
+                                        const localNumber = cleaned.substring(2);
+                                        const formatted = localNumber.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4');
+                                        return `<a href="#" class="client-phone-link" data-phone="${cleaned}">${formatted}</a>`;
                                     }
-                                } catch(e) { /* ігноруємо помилку, якщо дата невалідна */ }
-                            }
-
-                            // 2. Форматування телефону
-                            let phone = (app.phone || '').toString();
-                            if (phone.startsWith('38') && phone.length === 12) {
-                                phone = phone.substring(2);
-                            }
-                            const formattedPhone = phone.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4');
-
-                            // 3. Форматування кількості
+                                    return p;
+                                }).join('<br>');
+                            
                             const quantity = parseFloat(app.quantity);
                             const formattedQuantity = !isNaN(quantity) && quantity % 1 !== 0 ? quantity.toFixed(2) : (isNaN(quantity) ? '' : Math.trunc(quantity));
-
-                            // 4. Форматування суми
+                            const pricePerUnit = parseFloat(app.price_per_unit);
+                            const formattedPrice = isNaN(pricePerUnit) ? '' : pricePerUnit.toFixed(2);
                             const sum = parseFloat(app.sum);
                             const formattedSum = isNaN(sum) ? '' : sum.toFixed(2);
-
-                            // ▲▲▲ КІНЕЦЬ ЛОГІКИ ФОРМАТУВАННЯ ▲▲▲
-
-                            const row = `
-                                <tr>
-                                    <td style="text-align: center;">${index + 1}</td>
-                                    <td>${formattedDate}</td>
-                                    <td>${app.contact_name || ''}</td>
-                                    <td>${formattedPhone}</td>
-                                    <td style="text-align: right;">${app.price_per_unit || ''}</td>
-                                    <td style="text-align: center;">${formattedQuantity}</td>
-                                    <td style="text-align: right;">${formattedSum}</td>
-                                </tr>
-                            `;
-                            tableBody.insertAdjacentHTML('beforeend', row);
+                            const mainRow = `<tr><td style="text-align: center;">${index + 1}</td><td style="text-align: center;">${formattedDate}</td><td><a href="#" class="contact-name-link" data-details-target="details-row-${app.id}">${app.contact_name || ''}</a></td><td style="text-align: center;">${phoneLinks}</td><td style="text-align: center;">${formattedPrice}</td><td style="text-align: center;">${formattedQuantity}</td><td style="text-align: center;">${formattedSum}</td></tr>`;
+                            const details = JSON.parse(app.details || '{}');
+                            const detailsRow = `<tr id="details-row-${app.id}" class="details-row" style="display: none;"><td colspan="7"><div class="details-grid"><div><strong>Статус:</strong> ${details['Статус'] || '--'}</div><div><strong>Спосіб доставки:</strong> ${details['Спосіб доставки'] || '--'}</div><div><strong>ТТН:</strong> ${details['ТТН [Служба доставки]'] || '--'}</div><div><strong>Адреса доставки:</strong> ${details['Адреса доставки [Служба доставки]'] || '--'}</div><div><strong>Оплачено:</strong> ${details['Оплачено'] || '--'}</div><div><strong>Менеджер:</strong> ${details['Менеджер'] || '--'}</div></div></td></tr>`;
+                            tableBody.insertAdjacentHTML('beforeend', mainRow + detailsRow);
                         });
                     } else {
-                        const row = `<tr><td colspan="7" style="text-align: center;">Для цього товару немає заявок.</td></tr>`;
-                        tableBody.innerHTML = row;
+                        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Для цього товару немає заявок.</td></tr>`;
                     }
-    
-                    if (applicationsModal) {
-                        applicationsModal.style.display = 'flex';
-                    }
-    
+                    if (applicationsModal) applicationsModal.style.display = 'flex';
                 } catch (error) {
                     console.error("Error fetching applications:", error);
-                    showToast(error.message, 'error');
+                    showToast(error.message || 'Не вдалося завантажити дані.', 'error');
                 }
             });
+        });
+
+        // Обробник подій для всіх типів кліків у першому модальному вікні
+        document.getElementById('applicationsTableBody').addEventListener('click', async function(event) {
+            const target = event.target;
+            // Обробка кліку на ім'я
+            if (target.classList.contains('contact-name-link')) {
+                event.preventDefault();
+                const detailsRowId = target.dataset.detailsTarget;
+                const detailsRow = document.getElementById(detailsRowId);
+                if (detailsRow) {
+                    detailsRow.style.display = detailsRow.style.display === 'none' ? 'table-row' : 'none';
+                }
+            }
+            // Обробка кліку на телефон
+            if (target.classList.contains('client-phone-link')) {
+                event.preventDefault();
+                const phone = target.dataset.phone;
+                try {
+                    const response = await fetch(`/api/analytics/client-applications/${phone}`);
+                    const data = await response.json();
+                    
+                    document.getElementById('clientAppsModalTitle').textContent = `Всі заявки клієнта: ${data.client_name} (${target.textContent})`;
+                    const tableBody = document.getElementById('clientAppsTableBody');
+                    tableBody.innerHTML = '';
+
+                    if (data.applications && data.applications.length > 0) {
+                        
+                        const groupedByDate = data.applications.reduce((acc, app) => {
+                            const saleDate = app.sale_date ? new Date(app.sale_date).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Не вказано';
+                            if (!acc[saleDate]) acc[saleDate] = [];
+                            acc[saleDate].push(app);
+                            return acc;
+                        }, {});
+
+                        let groupIndexCounter = 1;
+                        let grandTotal = 0; 
+
+                        for (const date in groupedByDate) {
+                            const appsInDateGroup = groupedByDate[date];
+                            
+                            const groupedBySku = appsInDateGroup.reduce((acc, app) => {
+                                const sku = app.sku || 'N/A';
+                                if (!acc[sku]) {
+                                    acc[sku] = { product_name: app.product_name, total_quantity: 0, total_sum: 0 };
+                                }
+                                acc[sku].total_quantity += (parseFloat(app.quantity) || 0);
+                                acc[sku].total_sum += (parseFloat(app.sum) || 0);
+                                return acc;
+                            }, {});
+
+                            const overallTotalSumForDate = Object.values(groupedBySku).reduce((sum, item) => sum + item.total_sum, 0);
+                            const fOverallSum = overallTotalSumForDate.toFixed(2);
+                            grandTotal += overallTotalSumForDate; 
+
+                            const uniqueSkuCount = Object.keys(groupedBySku).length;
+
+                            // ▼▼▼ ОНОВЛЕНА ЛОГІКА ДЛЯ ДОДАВАННЯ КЛАСІВ КОЛЬОРУ ▼▼▼
+                            const rowGroupClass = (groupIndexCounter % 2 === 0) ? 'row-group-even' : '';
+
+                            Object.entries(groupedBySku).forEach(([sku, skuData], skuIndex) => {
+                                const fSkuQuantity = (skuData.total_quantity % 1 !== 0) ? skuData.total_quantity.toFixed(2) : Math.trunc(skuData.total_quantity);
+                                const fSkuSum = skuData.total_sum.toFixed(2);
+                                
+                                // Додаємо клас до кожного рядка групи
+                                let rowHtml = `<tr class="${rowGroupClass}">`;
+
+                                if (skuIndex === 0) {
+                                    rowHtml += `<td style="text-align: center; vertical-align: middle;" rowspan="${uniqueSkuCount}">${groupIndexCounter}</td>`;
+                                    rowHtml += `<td style="text-align: center; vertical-align: middle;" rowspan="${uniqueSkuCount}">${date}</td>`;
+                                }
+                                rowHtml += `<td>${sku}</td>`;
+                                rowHtml += `<td>${skuData.product_name}</td>`;
+                                rowHtml += `<td style="text-align: center;">${fSkuQuantity}</td>`;
+                                rowHtml += `<td style="text-align: center;">${fSkuSum}</td>`;
+                                if (skuIndex === 0) {
+                                    rowHtml += `<td style="text-align: center; vertical-align: middle; font-weight: bold;" rowspan="${uniqueSkuCount}">${fOverallSum}</td>`;
+                                }
+                                rowHtml += '</tr>';
+                                tableBody.insertAdjacentHTML('beforeend', rowHtml);
+                            });
+                            groupIndexCounter++; // Збільшуємо лічильник для наступної групи дат
+                        }
+                        
+                        document.getElementById('clientAppsGrandTotal').textContent = grandTotal.toFixed(2);
+
+                    } else {
+                        tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Для цього клієнта не знайдено заявок.</td></tr>`;
+                        document.getElementById('clientAppsGrandTotal').textContent = '0.00';
+                    }
+                    if (clientApplicationsModal) clientApplicationsModal.style.display = 'flex';
+                } catch (error) {
+                    console.error("Error fetching client applications:", error);
+                    showToast(error.message || 'Не вдалося завантажити дані клієнта.', 'error');
+                }
+            }
         });
     </script>
 {% endblock %}

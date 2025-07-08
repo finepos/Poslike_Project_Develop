@@ -40,10 +40,7 @@ COLUMN_MAPPING = {
 
 @bp.route('/analytics')
 def analytics_index():
-    """
-    Головна сторінка аналітики, що дублює функціонал головної сторінки
-    з додаванням аналітичних даних.
-    """
+    # ... (код цієї функції залишається без змін) ...
     page = request.args.get('page', 1, type=int)
     show_all = request.args.get('show_all')
     search_sku = request.args.get('search_sku', '')
@@ -206,12 +203,13 @@ def analytics_index():
                            stock_level_filter=stock_level_filter, show_param_filters=show_param_filters,
                            sort_by=sort_by, sort_order=sort_order,
                            is_exact_sku_search=is_exact_sku_search,
-                           DEFAULT_PER_PAGE=DEFAULT_PER_PAGE)
+                           DEFAULT_PER_PAGE=DEFAULT_PER_PAGE,
+                           endpoint=request.endpoint)
 
 
 @bp.route('/analytics/settings', methods=['GET', 'POST'])
 def analytics_settings():
-    """Сторінка налаштувань та імпорту."""
+    # ... (код цієї функції залишається без змін) ...
     if request.method == 'POST':
         if 'import_file' not in request.files:
             flash('Файл для імпорту не вибрано.', 'danger')
@@ -224,7 +222,7 @@ def analytics_settings():
 
         if file and file.filename.endswith(('.xls', '.xlsx')):
             try:
-                df = pd.read_excel(file)
+                df = pd.read_excel(file, dtype=str)
                 
                 matched_columns = set(df.columns) & set(COLUMN_MAPPING.keys())
                 if len(matched_columns) < 10:
@@ -255,27 +253,71 @@ def analytics_settings():
                 db.session.add(new_import)
                 db.session.flush()
 
+                existing_records_query = db.session.query(
+                    AnalyticsData.analytics_product_sku,
+                    AnalyticsData.analytics_sale_date,
+                    AnalyticsData.analytics_phone,
+                    AnalyticsData.analytics_product_quantity
+                ).all()
+                existing_records_set = {tuple(x) for x in existing_records_query}
+                
+                new_records_added = 0
+                duplicates_skipped = 0
+
                 for index, row in df.iterrows():
+                    sku = row.get('SKU [Товари/Послуги]')
+                    sale_date = row.get('Дата продажу')
+                    phone_raw = row.get('Телефон [Контакт]')
+                    quantity = row.get('К-ть [Товари/Послуги]')
+                    
+                    phone_final_value = None
+                    if phone_raw:
+                        normalized_str = re.sub(r'[,;\s]+', ',', str(phone_raw))
+                        phone_parts = [p.strip() for p in normalized_str.split(',')]
+                        
+                        processed_phones = []
+                        for part in phone_parts:
+                            cleaned_phone = re.sub(r'\D', '', part)
+                            
+                            if len(cleaned_phone) > 12 and len(cleaned_phone) % 12 == 0:
+                                for i in range(0, len(cleaned_phone), 12):
+                                    processed_phones.append(cleaned_phone[i:i+12])
+                                continue
+
+                            if len(cleaned_phone) == 10:
+                                processed_phones.append('38' + cleaned_phone)
+                            elif len(cleaned_phone) > 0:
+                                processed_phones.append(cleaned_phone)
+                        
+                        phone_final_value = ','.join(p for p in processed_phones if p)
+                    
+                    record_tuple = (sku, sale_date, phone_final_value, quantity)
+
+                    if None in record_tuple or (isinstance(phone_final_value, str) and not phone_final_value):
+                        continue
+
+                    if record_tuple in existing_records_set:
+                        duplicates_skipped += 1
+                        continue 
+                    
                     data_row = AnalyticsData(import_id=new_import.id, raw_data=row.to_json())
                     for col_name, model_field in COLUMN_MAPPING.items():
                         if col_name in row and pd.notna(row[col_name]):
-                            # ▼▼▼ ОНОВЛЕНА ЛОГІКА ФОРМАТУВАННЯ ТЕЛЕФОНІВ ▼▼▼
-                            value = str(row[col_name])
                             if col_name == 'Телефон [Контакт]':
-                                cleaned_phone = re.sub(r'\D', '', value)
-                                if len(cleaned_phone) == 10:
-                                    value = '38' + cleaned_phone
-                                else:
-                                    value = cleaned_phone
-                            setattr(data_row, model_field, value)
-                            # ▲▲▲ КІНЕЦЬ ОНОВЛЕННЯ ▲▲▲
+                                setattr(data_row, model_field, phone_final_value)
+                            else:
+                                setattr(data_row, model_field, str(row[col_name]))
                     db.session.add(data_row)
+                    
+                    existing_records_set.add(record_tuple)
+                    new_records_added += 1
                 
                 db.session.commit()
-                flash('Файл успішно імпортовано!', 'success')
-
+                flash(f'Імпорт завершено. Додано нових записів: {new_records_added}. Пропущено дублікатів: {duplicates_skipped}.', 'success')
+                
             except Exception as e:
                 db.session.rollback()
+                current_app.logger.error(f"Import Error: {e}", exc_info=True)
                 flash(f'Помилка під час обробки файлу: {e}', 'danger')
 
             return redirect(url_for('main.analytics_settings'))
@@ -286,7 +328,7 @@ def analytics_settings():
 
 @bp.route('/analytics/delete/<int:import_id>', methods=['POST'])
 def analytics_delete(import_id):
-    """Видалення імпортованого файлу та даних."""
+    # ... (код цієї функції залишається без змін) ...
     import_to_delete = AnalyticsImport.query.get_or_404(import_id)
     try:
         if os.path.exists(import_to_delete.file_path):
@@ -301,10 +343,10 @@ def analytics_delete(import_id):
         
     return redirect(url_for('main.analytics_settings'))
 
-# ▼▼▼ НОВИЙ МАРШРУТ ДЛЯ ОТРИМАННЯ ЗАЯВОК ▼▼▼
+
 @bp.route('/api/analytics/applications/<string:sku>')
 def get_applications_for_sku(sku):
-    """API для отримання заявок за конкретним SKU."""
+    # ... (код цієї функції залишається без змін) ...
     try:
         product_info = AnalyticsData.query.filter_by(analytics_product_sku=sku).first()
         product_name = product_info.analytics_product_name if product_info else "Назву не знайдено"
@@ -314,12 +356,14 @@ def get_applications_for_sku(sku):
         apps_data = []
         for app in applications:
             apps_data.append({
+                'id': app.id,
                 'sale_date': app.analytics_sale_date,
                 'contact_name': f"{app.analytics_last_name or ''} {app.analytics_first_name or ''}".strip(),
                 'phone': app.analytics_phone,
                 'price_per_unit': app.analytics_product_price_per_unit,
                 'quantity': app.analytics_product_quantity,
-                'sum': app.analytics_product_sum
+                'sum': app.analytics_product_sum,
+                'details': app.raw_data
             })
 
         return jsonify({
@@ -329,4 +373,39 @@ def get_applications_for_sku(sku):
             })
     except Exception as e:
         current_app.logger.error(f"Error fetching applications for SKU {sku}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ▼▼▼ НОВИЙ МАРШРУТ ДЛЯ ОТРИМАННЯ ЗАЯВОК КЛІЄНТА ▼▼▼
+@bp.route('/api/analytics/client-applications/<string:phone_number>')
+def get_client_applications(phone_number):
+    """API для отримання всіх заявок за номером телефону."""
+    try:
+        # Шукаємо всі заявки, де рядок з телефонами містить шуканий номер
+        client_apps = AnalyticsData.query.filter(
+            AnalyticsData.analytics_phone.like(f'%{phone_number}%')
+        ).order_by(AnalyticsData.analytics_sale_date.desc()).all()
+
+        client_name = ""
+        if client_apps:
+            # Беремо ім'я з першої знайденої заявки
+            client_name = f"{client_apps[0].analytics_last_name or ''} {client_apps[0].analytics_first_name or ''}".strip()
+
+        apps_data = []
+        for app in client_apps:
+            apps_data.append({
+                'sku': app.analytics_product_sku,
+                'product_name': app.analytics_product_name,
+                'sale_date': app.analytics_sale_date,
+                'quantity': app.analytics_product_quantity,
+                'sum': app.analytics_product_sum,
+            })
+
+        return jsonify({
+            'client_name': client_name,
+            'phone_number': phone_number,
+            'applications': apps_data
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error fetching client applications for phone {phone_number}: {e}")
         return jsonify({'error': str(e)}), 500

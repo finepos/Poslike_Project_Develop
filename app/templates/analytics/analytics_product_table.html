@@ -7,6 +7,7 @@
             <th>Ціна</th>
             <th>Залишок</th>
             <th>В дорозі</th>
+            <th>Термін доставки</th>
             <th>Мін. залишок</th> 
             <th>Продано</th>
             <th>К-ть заявок</th>
@@ -20,9 +21,19 @@
                 <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox"></td>
                 <td>{{ product.sku }}</td>
                 <td style="max-width: 400px; word-wrap: break-word;">{{ product.name }}</td>
-                <td class="product-price" data-base-price="{{ product.price }}">{{ "%.2f"|format(product.price) }}</td>
+                <td class="product-price" data-base-price="{{ product.price }}">{{ ("%.2f"|format(product.price)).replace(',', '.') }}</td>
                 <td style="text-align: center;"><b>{{ product.stock }}</b></td>
                 <td style="text-align: center;">{{ product.in_transit_quantity }}</td>
+
+                <td>
+                    <form method="POST" action="{{ url_for('main.update_delivery_time') }}" style="align-items: center; margin: 0;">
+                        <input type="hidden" name="product_id" value="{{ product.id }}">
+                        <input type="number" name="delivery_time" value="{{ product.delivery_time }}"
+                               style="width: 70px; padding: 5px; margin-right: 5px; margin-bottom: 0; height: 33px; box-sizing: border-box;">
+                        <button type="submit" style="padding: 5px 10px; height: 33px; box-sizing: border-box;">OK</button>
+                    </form>
+                </td>
+
                 <td>
                     <form method="POST" action="{{ url_for('main.update_minimum_stock') }}" style="align-items: center; margin: 0;">
                         <input type="hidden" name="product_id" value="{{ product.id }}">
@@ -53,7 +64,7 @@
                 </td>
             </tr>
         {% else %}
-            <tr><td colspan="10" style="text-align:center;">Товарів за вашим запитом не знайдено.</td></tr>
+            <tr><td colspan="11" style="text-align:center;">Товарів за вашим запитом не знайдено.</td></tr>
         {% endfor %}
     </tbody>
 </table>

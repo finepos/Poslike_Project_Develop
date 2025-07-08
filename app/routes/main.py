@@ -7,7 +7,6 @@ from sqlalchemy import or_
 
 from . import bp
 from ..models import Product, Printer, ColorSetting
-# ▼▼▼ ВИДАЛЕНО НЕПОТРІБНИЙ ІМПОРТ 'calculate_forecast' ▼▼▼
 from ..utils import get_pagination_window, natural_sort_key
 
 
@@ -117,13 +116,10 @@ def index():
             else:
                 status = 'status-level-5'
         
-        # ▼▼▼ ЗМІНЕНО СЛОВНИК: ВИДАЛЕНО 'avg_sales_per_day' та 'days_left' ▼▼▼
         item_data = {'product': p, 'product_url': xml_data.get('product_url', ''), 'product_picture': xml_data.get('product_picture', ''), 'status_class': status}
         
         if not stock_level_filter or stock_level_filter == status:
             final_products_to_display.append(item_data)
-
-    # ▼▼▼ ВИДАЛЕНО ЦИКЛ РОЗРАХУНКУ ПРОГНОЗУ ▼▼▼
 
     if sort_by == 'stock':
         reverse = sort_order == 'desc'
@@ -161,4 +157,6 @@ def index():
                            show_param_filters=show_param_filters,
                            sort_by=sort_by, sort_order=sort_order,
                            is_exact_sku_search=is_exact_sku_search,
-                           DEFAULT_PER_PAGE=DEFAULT_PER_PAGE)
+                           DEFAULT_PER_PAGE=DEFAULT_PER_PAGE,
+                           # ▼▼▼ ДОДАНО ЦЕЙ РЯДОК ▼▼▼
+                           endpoint=request.endpoint)

@@ -51,6 +51,18 @@ def add_in_transit():
     flash(f"Додано {quantity} од. товару '{product.name}' в дорозі.", "success")
     return redirect(request.referrer or url_for('main.index'))
 
+# ▼▼▼ ДОДАЙТЕ НОВУ ФУНКЦІЮ НИЖЧЕ ▼▼▼
+@bp.route('/update-delivery-time', methods=['POST'])
+def update_delivery_time():
+    product_id = request.form.get('product_id')
+    product = Product.query.get(product_id)
+    if product:
+        delivery_time_str = request.form.get('delivery_time')
+        # Встановлюємо значення або 100 за замовчуванням, якщо поле порожнє
+        product.delivery_time = int(delivery_time_str) if delivery_time_str.isdigit() else 100
+        db.session.commit()
+    return redirect(request.referrer or url_for('main.index'))
+# ▲▲▲ КІНЕЦЬ НОВОЇ ФУНКЦІЇ ▲▲▲
 
 @bp.route('/bulk-actions', methods=['POST'])
 def bulk_actions():

@@ -96,10 +96,9 @@
 
     function closeGoodsReceiptModal() { if (goodsReceiptModal) { goodsReceiptModal.style.display = 'none'; } }
     
-    // ▼▼▼ ПОЧАТОК ЗМІН ▼▼▼
     async function submitSinglePrintJob(event) { 
         const currencySelector = document.getElementById('currencySelector');
-        if (currencySelector) { // Перевіряємо, чи існує елемент
+        if (currencySelector) {
             document.querySelectorAll('.display-currency-input').forEach(input => {
                 input.value = currencySelector.value;
             });
@@ -109,14 +108,13 @@
     
     async function submitBulkPrintJob(event) { 
         const currencySelector = document.getElementById('currencySelector');
-        if (currencySelector) { // Перевіряємо, чи існує елемент
+        if (currencySelector) {
             document.querySelectorAll('.display-currency-input').forEach(input => {
                 input.value = currencySelector.value;
             });
         }
         await submitPrintJob(event, "{{ url_for('main.execute_bulk_print') }}"); 
     }
-    // ▲▲▲ КІНЕЦЬ ЗМІН ▲▲▲
 
     function closePrintModal() { clearTimeout(printModalTimeout); if (printModalOverlay) printModalOverlay.style.display = 'none'; }
     function showProductImage(src) { if(src) { document.getElementById('imageModalContent').src = src; imageModalOverlay.style.display = 'flex'; } }
@@ -351,4 +349,49 @@
         updateCategorySelectText();
         checkAndLoadDynamicFilters();
     });
+
+    // ▼▼▼ ПОЧАТОК ЗМІН В ЦЬОМУ БЛОЦІ ▼▼▼
+    document.addEventListener('DOMContentLoaded', function() {
+        const currencySelector = document.getElementById('currencySelector');
+        if (currencySelector) {
+            const currencyRates = {};
+            currencySelector.querySelectorAll('option').forEach(opt => {
+                currencyRates[opt.value] = parseFloat(opt.dataset.rate);
+            });
+
+            function updatePrices(selectedCurrency, selectedRate) {
+                const priceCells = document.querySelectorAll('.product-price, .convertible-price');
+                if (priceCells.length > 0) {
+                    priceCells.forEach(priceCell => {
+                        const basePriceUAH = parseFloat(priceCell.dataset.basePrice);
+                        if (!isNaN(basePriceUAH) && selectedRate > 0) {
+                            const newPrice = basePriceUAH / selectedRate;
+                            // ЗАМІНЕНО .replace(',', '.') НА .toFixed(2)
+                            priceCell.textContent = newPrice.toFixed(2);
+                        }
+                    });
+                }
+                const displayCurrencyInputs = document.querySelectorAll('.display-currency-input');
+                if (displayCurrencyInputs) {
+                    displayCurrencyInputs.forEach(input => input.value = selectedCurrency);
+                }
+            }
+
+            currencySelector.addEventListener('change', function() {
+                const selectedCurrency = this.value;
+                const selectedRate = currencyRates[selectedCurrency];
+                updatePrices(selectedCurrency, selectedRate);
+                localStorage.setItem('selectedCurrency', selectedCurrency);
+            });
+
+            const savedCurrency = localStorage.getItem('selectedCurrency');
+            if (savedCurrency && currencyRates[savedCurrency]) {
+                currencySelector.value = savedCurrency;
+                currencySelector.dispatchEvent(new Event('change'));
+            } else if (currencySelector.value) {
+                updatePrices(currencySelector.value, currencyRates[currencySelector.value]);
+            }
+        }
+    });
+    // ▲▲▲ КІНЕЦЬ ЗМІН ▲▲▲
 </script>

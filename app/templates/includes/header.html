@@ -14,7 +14,7 @@
         
         <a href="{{ url_for('main.analytics_index') }}" class="button">Аналітика</a>
 
-        {% if 'salesdrive' not in request.endpoint and 'analytics' not in request.endpoint %}
+        {% if 'salesdrive' not in request.endpoint %}
         <label for="currencySelector" style="margin: 0; font-weight: normal; display: block;">Валюта:</label>
         <select id="currencySelector" style="width: 80px; margin-bottom: 0; height: 38px; padding: 5px;">
             {% if available_currencies %}
@@ -26,7 +26,6 @@
             {% endif %}
         </select>
         {% endif %}
-        
         <a href="{{ url_for('main.settings') }}" class="button button-secondary" style="height: 38px; padding: 0 15px; line-height: 38px;">Налаштування</a>
     </div>
 </div>

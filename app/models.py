@@ -14,12 +14,17 @@ class Product(db.Model):
     minimum_stock = db.Column(db.Integer, nullable=True)
     xml_data = db.Column(db.Text, nullable=True)
     
-    # --- НОВІ ПОЛЯ ---
     vendor_code = db.Column(db.String(100), index=True)
     vendor_price = db.Column(db.Float, default=0.0)
     
+    delivery_time = db.Column(db.Integer, nullable=False, default=100)
+    
     sales = db.relationship('Sale', backref='product', lazy=True, cascade="all, delete-orphan")
     in_transit_orders = db.relationship('InTransitOrder', backref='product', lazy=True, cascade="all, delete-orphan")
+
+    # ▼▼▼ ДОДАНО ЦЕЙ РЯДОК ДЛЯ ВИРІШЕННЯ ПОМИЛКИ ▼▼▼
+    __table_args__ = {'extend_existing': True}
+
 
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -36,7 +41,6 @@ class InTransitOrder(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 class Printer(db.Model):
-    # ... (модель Printer без змін) ...
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, default="Принтер")
     ip_address = db.Column(db.String(15), nullable=False)
@@ -71,7 +75,6 @@ class ColorSetting(db.Model):
     background_color = db.Column(db.String(7), nullable=False)
     text_color = db.Column(db.String(7), nullable=False)
     label = db.Column(db.String(100), nullable=False)
-    # ▼▼▼ ДОДАНО НОВЕ ПОЛЕ ▼▼▼
     sort_order = db.Column(db.Integer, nullable=False, default=100)
 
     def to_dict(self):
@@ -80,25 +83,19 @@ class ColorSetting(db.Model):
             'background_color': self.background_color,
             'text_color': self.text_color,
             'label': self.label,
-            # ▼▼▼ ДОДАНО В СЛОВНИК ▼▼▼
             'sort_order': self.sort_order
         }
 
-# --- НОВА МОДЕЛЬ ДЛЯ ВАЛЮТ ---
 class Currency(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(3), unique=True, nullable=False)
     rate = db.Column(db.Float, nullable=False)
 
-# --- НОВА МОДЕЛЬ ДЛЯ ЗБЕРІГАННЯ ЗАГАЛЬНИХ НАЛАШТУВАНЬ ---
 class Setting(db.Model):
     key = db.Column(db.String(50), primary_key=True)
     value = db.Column(db.String(255), nullable=False)
 
-# --- ▼▼▼ ДОДАЙТЕ ЦЕЙ КОД В КІНЕЦЬ ФАЙЛУ ▼▼▼ ---
-
 class AnalyticsImport(db.Model):
-    """Модель для зберігання інформації про імпортовані файли аналітики."""
     __bind_key__ = 'analytics'
     id = db.Column(db.Integer, primary_key=True)
     original_filename = db.Column(db.String(255), nullable=False)
@@ -107,16 +104,13 @@ class AnalyticsImport(db.Model):
     data_period_start = db.Column(db.Date, nullable=True)
     data_period_end = db.Column(db.Date, nullable=True)
     
-    # Зв'язок для каскадного видалення
     analytics_data = db.relationship('AnalyticsData', backref='import_source', lazy=True, cascade="all, delete-orphan")
 
 class AnalyticsData(db.Model):
-    """Модель для зберігання одного рядка даних з файлу аналітики."""
     __bind_key__ = 'analytics'
     id = db.Column(db.Integer, primary_key=True)
     import_id = db.Column(db.Integer, db.ForeignKey('analytics_import.id'), nullable=False)
     
-    # Зберігаємо всі дані як текст, щоб уникнути помилок типів
     analytics_creation_date = db.Column(db.String(50))
     analytics_last_name = db.Column(db.String(100))
     analytics_first_name = db.Column(db.String(100))
@@ -140,7 +134,7 @@ class AnalyticsData(db.Model):
     analytics_product_name = db.Column(db.String(255))
     analytics_product_description = db.Column(db.Text)
     analytics_product_id = db.Column(db.String(100))
-    analytics_product_sku = db.Column(db.String(100), index=True) # Індекс для швидкого пошуку
+    analytics_product_sku = db.Column(db.String(100), index=True) 
     analytics_product_price_per_unit = db.Column(db.String(50))
     analytics_product_quantity = db.Column(db.String(50))
     analytics_product_discount = db.Column(db.String(50))
@@ -158,5 +152,4 @@ class AnalyticsData(db.Model):
     analytics_product_upsell = db.Column(db.String(100))
     analytics_product_tags = db.Column(db.Text)
 
-    # Поле для зберігання всіх даних рядка у форматі JSON
     raw_data = db.Column(db.Text)

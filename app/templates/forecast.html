@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+{% block title %}Прогноз замовлення товарів{% endblock %}
+
+{% block content %}
+<style>
+    .category-header {
+        background-color: #e9ecef;
+        padding: 10px;
+        margin-top: 25px;
+        border-radius: 5px;
+    }
+    #forecast-table tbody tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+</style>
+
+<div class="header-controls">
+    <h1>Прогноз замовлення товарів</h1>
+    <a href="{{ url_for('main.analytics_index') }}" class="button button-secondary">&larr; Назад до аналітики</a>
+</div>
+
+{% if error %}
+    <div class="flash danger">
+        <p>Сталася помилка при генерації прогнозу:</p>
+        <p><strong>{{ error }}</strong></p>
+    </div>
+{% elif products_by_category %}
+    {% for category, products in products_by_category.items() %}
+        <h2 class="category-header">{{ category }}</h2>
+        <table id="forecast-table">
+            <thead>
+                <tr>
+                    <th style="width: 15%;">SKU</th>
+                    <th>Назва товару</th>
+                    <th style="width: 8%; text-align: center;">Залишок</th>
+                    <th style="width: 8%; text-align: center;">В дорозі</th>
+                    <th style="width: 10%; text-align: center;">Продано (30д)</th>
+                    <th style="width: 10%; text-align: center;">Термін дост.</th>
+                    <th style="width: 12%; text-align: center; background-color: #d4edda;">К-ть до замовлення</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in products %}
+                <tr>
+                    <td>{{ p.sku }}</td>
+                    <td>{{ p.name }}</td>
+                    <td style="text-align: center;">{{ p.stock }}</td>
+                    <td style="text-align: center;">{{ p.in_transit }}</td>
+                    <td style="text-align: center;">{{ p.sales_last_30_days }}</td>
+                    <td style="text-align: center;">{{ p.delivery_time }}</td>
+                    <td style="text-align: center; font-weight: bold; background-color: #d4edda;">{{ p.order_quantity }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endfor %}
+{% else %}
+    <p style="text-align: center; margin-top: 30px;">Не знайдено товарів, які потребують замовлення на основі поточної статистики.</p>
+{% endif %}
+
+{% endblock %}

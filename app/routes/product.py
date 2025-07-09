@@ -1,7 +1,9 @@
+# app/routes/product.py
 import os
 from datetime import datetime, date
 from io import BytesIO
-from flask import render_template, request, redirect, url_for, flash, send_file, current_app
+# ▼▼▼ Додано jsonify для відповіді на AJAX-запити ▼▼▼
+from flask import render_template, request, redirect, url_for, flash, send_file, current_app, jsonify
 from sqlalchemy import case
 from fpdf import FPDF
 from openpyxl import Workbook
@@ -20,7 +22,22 @@ def update_minimum_stock():
         min_stock_str = request.form.get('minimum_stock')
         product.minimum_stock = int(min_stock_str) if min_stock_str and min_stock_str.isdigit() else None
         db.session.commit()
-    return redirect(request.referrer or url_for('main.index'))
+        # ▼▼▼ Повертаємо JSON-відповідь ▼▼▼
+        return jsonify({'status': 'success', 'message': f'Мінімальний залишок для {product.sku} оновлено.'})
+    return jsonify({'status': 'error', 'message': 'Товар не знайдено.'}), 404
+
+
+@bp.route('/update-delivery-time', methods=['POST'])
+def update_delivery_time():
+    product_id = request.form.get('product_id')
+    product = Product.query.get(product_id)
+    if product:
+        delivery_time_str = request.form.get('delivery_time')
+        product.delivery_time = int(delivery_time_str) if delivery_time_str and delivery_time_str.isdigit() else 100
+        db.session.commit()
+        # ▼▼▼ Повертаємо JSON-відповідь ▼▼▼
+        return jsonify({'status': 'success', 'message': f'Термін доставки для {product.sku} оновлено.'})
+    return jsonify({'status': 'error', 'message': 'Товар не знайдено.'}), 404
 
 
 @bp.route('/add-in-transit-form/<int:product_id>')
@@ -31,6 +48,7 @@ def add_in_transit_form(product_id):
 
 @bp.route('/add-in-transit', methods=['POST'])
 def add_in_transit():
+    # ... (код цієї функції без змін) ...
     product_id = request.form.get('product_id')
     quantity = request.form.get('quantity')
     product = Product.query.get(product_id)
@@ -51,21 +69,10 @@ def add_in_transit():
     flash(f"Додано {quantity} од. товару '{product.name}' в дорозі.", "success")
     return redirect(request.referrer or url_for('main.index'))
 
-# ▼▼▼ ДОДАЙТЕ НОВУ ФУНКЦІЮ НИЖЧЕ ▼▼▼
-@bp.route('/update-delivery-time', methods=['POST'])
-def update_delivery_time():
-    product_id = request.form.get('product_id')
-    product = Product.query.get(product_id)
-    if product:
-        delivery_time_str = request.form.get('delivery_time')
-        # Встановлюємо значення або 100 за замовчуванням, якщо поле порожнє
-        product.delivery_time = int(delivery_time_str) if delivery_time_str.isdigit() else 100
-        db.session.commit()
-    return redirect(request.referrer or url_for('main.index'))
-# ▲▲▲ КІНЕЦЬ НОВОЇ ФУНКЦІЇ ▲▲▲
 
 @bp.route('/bulk-actions', methods=['POST'])
 def bulk_actions():
+    # ... (код цієї функції без змін) ...
     action = request.form.get('action')
     product_ids_str = request.form.getlist('product_ids')
     display_currency_code = request.form.get('display_currency', 'UAH')
@@ -170,6 +177,7 @@ def bulk_actions():
 
 @bp.route('/export/goods-receipt', methods=['POST'])
 def export_goods_receipt():
+    # ... (код цієї функції без змін) ...
     product_ids_str = request.form.get('product_ids')
     export_currency_code = request.form.get('currency')
     if not product_ids_str or not export_currency_code:

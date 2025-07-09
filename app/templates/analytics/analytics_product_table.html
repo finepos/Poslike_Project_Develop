@@ -18,24 +18,22 @@
         {% for item in products %}
             {% set product = item.product %}
             <tr class="{{ item.status_class }}" data-sku="{{ product.sku }}" data-name="{{ product.name }}">
-                <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox"></td>
+                <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox" form="bulkActionForm"></td>
                 <td>{{ product.sku }}</td>
                 <td style="max-width: 400px; word-wrap: break-word;">{{ product.name }}</td>
                 <td class="product-price" data-base-price="{{ product.price }}">{{ ("%.2f"|format(product.price)).replace(',', '.') }}</td>
                 <td style="text-align: center;"><b>{{ product.stock }}</b></td>
                 <td style="text-align: center;">{{ product.in_transit_quantity }}</td>
-
                 <td>
-                    <form method="POST" action="{{ url_for('main.update_delivery_time') }}" style="align-items: center; margin: 0;">
+                    <form method="POST" action="{{ url_for('main.update_delivery_time') }}" onsubmit="handleSingleUpdate(event)" style="align-items: center; margin: 0; display: flex;">
                         <input type="hidden" name="product_id" value="{{ product.id }}">
                         <input type="number" name="delivery_time" value="{{ product.delivery_time }}"
                                style="width: 70px; padding: 5px; margin-right: 5px; margin-bottom: 0; height: 33px; box-sizing: border-box;">
                         <button type="submit" style="padding: 5px 10px; height: 33px; box-sizing: border-box;">OK</button>
                     </form>
                 </td>
-
                 <td>
-                    <form method="POST" action="{{ url_for('main.update_minimum_stock') }}" style="align-items: center; margin: 0;">
+                    <form method="POST" action="{{ url_for('main.update_minimum_stock') }}" onsubmit="handleSingleUpdate(event)" style="align-items: center; margin: 0; display: flex;">
                         <input type="hidden" name="product_id" value="{{ product.id }}">
                         <input type="number" name="minimum_stock" value="{{ product.minimum_stock or '' }}" placeholder="--"
                                style="width: 70px; padding: 5px; margin-right: 5px; margin-bottom: 0; height: 33px; box-sizing: border-box;">

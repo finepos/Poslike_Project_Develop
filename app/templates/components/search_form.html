@@ -35,14 +35,14 @@
 
         <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;">
             <div id="bulkActionsContainer" style="display: none; gap: 10px; flex-wrap: nowrap; align-items: baseline;">
-                <select name="action" id="bulkActionSelect" style="min-width: 150px;">
+                <select name="action" id="bulkActionSelect" style="min-width: 150px;" form="bulkActionForm">
                     <option value="print" data-btn-text="Друк">Друк</option>
                     <option value="export_xls" data-btn-text="Експорт XLS">Експорт XLS</option>
                     <option value="export_pdf" data-btn-text="Експорт PDF">Експорт PDF</option>
                     <option value="export_xls_plus" data-btn-text="Експорт XLS+">Експорт XLS+</option>
                     <option value="export_goods_receipt" data-btn-text="Згенерувати">Надходження XLS</option>
                 </select>
-                <button type="submit" id="bulkActionButton" class="button" style="min-width: 150px;">Друк</button>
+                <button type="submit" id="bulkActionButton" class="button" style="min-width: 150px;" form="bulkActionForm">Друк</button>
             </div>
             <button type="submit" form="mainSearchForm">Шукати</button>
             <a href="{{ url_for(endpoint) }}" class="button button-secondary">Очистити</a>

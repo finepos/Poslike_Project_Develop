@@ -138,7 +138,7 @@
     
     <div id="applicationsModal" class="modal-overlay">
         <div class="modal-content" style="max-width: 90%; width: 1200px;">
-            <span class="modal-close" onclick="closeApplicationsModal()">&times;</span>
+            <span id="closeApplicationsModalBtn" class="modal-close">&times;</span>
             <h2 id="applicationsModalTitle">Заявки для товару</h2>
             <h3 id="applicationsModalSubtitle" style="color: #555; margin-top: -10px; font-weight: normal;"></h3>
             <div style="max-height: 70vh; overflow-y: auto;">
@@ -238,6 +238,11 @@
         }
         function closeClientApplicationsModal() {
             if (clientApplicationsModal) clientApplicationsModal.style.display = 'none';
+        }
+
+        const closeApplicationsModalBtn = document.getElementById('closeApplicationsModalBtn');
+        if (closeApplicationsModalBtn) {
+            closeApplicationsModalBtn.addEventListener('click', closeApplicationsModal);
         }
     
         if (applicationsModal) applicationsModal.addEventListener('click', e => { if (e.target === applicationsModal) closeApplicationsModal(); });

@@ -71,7 +71,7 @@
 
 <div id="applicationsModal" class="modal-overlay">
     <div class="modal-content" style="max-width: 90%; width: 1200px;">
-        <span class="modal-close" onclick="closeApplicationsModal()">&times;</span>
+        <span id="closeApplicationsModalBtnForecast" class="modal-close">&times;</span>
         <h2 id="applicationsModalTitle">Заявки для товару</h2>
         <h3 id="applicationsModalSubtitle" style="color: #555; margin-top: -10px; font-weight: normal;"></h3>
         <div style="max-height: 70vh; overflow-y: auto;">
@@ -345,22 +345,25 @@
             fetchForecastData(true);
         }
 
-        // ▼▼▼ ДОДАНО ОБРОБНИКИ ДЛЯ МОДАЛЬНИХ ВІКОН ▼▼▼
         const applicationsModal = document.getElementById('applicationsModal');
         const clientApplicationsModal = document.getElementById('clientApplicationsModal');
     
         function closeApplicationsModal() { if (applicationsModal) applicationsModal.style.display = 'none'; }
         function closeClientApplicationsModal() { if (clientApplicationsModal) clientApplicationsModal.style.display = 'none'; }
+        
+        const closeApplicationsModalBtn = document.getElementById('closeApplicationsModalBtnForecast');
+        if (closeApplicationsModalBtn) {
+            closeApplicationsModalBtn.addEventListener('click', closeApplicationsModal);
+        }
     
         if (applicationsModal) applicationsModal.addEventListener('click', e => { if (e.target === applicationsModal) closeApplicationsModal(); });
         if (clientApplicationsModal) clientApplicationsModal.addEventListener('click', e => { if (e.target === clientApplicationsModal) closeClientApplicationsModal(); });
     
-        // Використовуємо делегування подій для динамічно створених таблиць
         resultsContainer.addEventListener('click', async function(event) {
             const target = event.target;
             if (target.classList.contains('request-count-link')) {
                 event.preventDefault();
-                const sku = event.currentTarget.dataset.sku;
+                const sku = target.dataset.sku;
                 try {
                     const response = await fetch(`/api/analytics/applications/${sku}`);
                     const data = await response.json();
@@ -391,11 +394,8 @@
         const appsTableBody = document.getElementById('applicationsTableBody');
         if (appsTableBody) {
              appsTableBody.addEventListener('click', async function(event) {
-                // Логіка для кліку на телефон для показу всіх заявок клієнта (якщо потрібно)
-                // ...
-            });
+             });
         }
-        // ▲▲▲ КІНЕЦЬ БЛОКУ ОБРОБНИКІВ ▲▲▲
     });
 </script>
 {% endblock %}

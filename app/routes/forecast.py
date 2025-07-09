@@ -15,11 +15,11 @@ from . import bp
 from ..models import Product, AnalyticsData
 from ..extensions import db
 
-# Налаштування алгоритму
-SAFETY_BUFFER_DAYS = 0
-MIN_SALES_FOR_FORECAST = 1
-LEAD_TIME_MULTIPLIER = 2.0
-LARGE_ORDER_COVERAGE_PERCENT = 0.6
+# --- НАЛАШТУВАННЯ АЛГОРИТМУ ПРОГНОЗУВАННЯ ---
+ORDER_CYCLE = 30
+Z_SCORE = 1.65
+MIN_SALES_FOR_TREND = 4
+AGGRESSIVENESS_FACTOR = 1.5 # Множник для збільшення обсягу замовлення (1.0 = нейтрально, >1 = агресивно)
 
 @bp.route('/forecast')
 def forecast_index():
@@ -55,15 +55,20 @@ def calculate_forecast_api():
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
         num_days_in_period = (end_date - start_date).days + 1
-        if num_days_in_period <= 0: num_days_in_period = 1
+        if num_days_in_period <= 1: num_days_in_period = 1
 
         category_conditions = [Product.xml_data.like(f'%\"product_category\": \"{cat.replace("\"", "\"\"")}\"%') for cat in search_categories]
         query = Product.query.filter(or_(*category_conditions))
 
         param_filters, show_param_filters = {}, False
         if len(search_categories) == 1:
-            products_in_cat = query.with_entities(Product.xml_data).all()
-            params_for_this_cat = {key for p_xml, in products_in_cat if p_xml for key in (json.loads(p_xml).get('product_params') or {})}
+            param_query = Product.query.filter(
+                Product.xml_data.like(f'%\"product_category\": \"{search_categories[0].replace("\"", "\"\"")}\"%')
+            ).with_entities(Product.xml_data)
+            
+            products_xml_in_cat = param_query.all()
+            params_for_this_cat = {key for xml_tuple in products_xml_in_cat if xml_tuple[0] for key in (json.loads(xml_tuple[0]).get('product_params') or {})}
+
             if params_for_this_cat:
                 show_param_filters = True
                 param_name_map = {re.sub(r'[\s/]+', '_', name): name for name in params_for_this_cat}
@@ -92,45 +97,59 @@ def calculate_forecast_api():
 
         products_to_order = []
         for product in all_products:
-            product_sales = df_period[df_period['sku'] == product.sku]
+            product_sales = df_period[df_period['sku'].str.startswith(product.sku, na=False)]
             
-            all_days_in_period = pd.date_range(start=start_date, end=end_date, freq='D')
-            daily_sales = product_sales.groupby(product_sales['sale_date'].dt.date)['quantity'].sum().reindex(all_days_in_period.date, fill_value=0)
-            
-            mean_sales_total = daily_sales.mean()
-            std_dev_total = daily_sales.std()
-            cv = std_dev_total / mean_sales_total if mean_sales_total > 0 else float('inf')
-            stability_factor = 1 / (1 + cv) if cv != float('inf') else 0
+            if product_sales.empty:
+                continue
 
-            recent_days_count = min(60, max(14, int(num_days_in_period * 0.25)))
-            recent_start_date = end_date - timedelta(days=recent_days_count - 1)
-            recent_sales = daily_sales.loc[recent_start_date.date():]
+            daily_sales = product_sales.groupby(product_sales['sale_date'].dt.date)['quantity'].sum().reindex(pd.date_range(start=start_date, end=end_date, freq='D').date, fill_value=0)
             
-            recent_avg_daily_demand = recent_sales.mean()
+            non_zero_sales = daily_sales[daily_sales > 0]
+            
+            if len(non_zero_sales) > 3:
+                Q1 = non_zero_sales.quantile(0.25)
+                Q3 = non_zero_sales.quantile(0.75)
+                IQR = Q3 - Q1
+                upper_bound = Q3 + 1.5 * IQR
+                normal_sales = non_zero_sales[non_zero_sales <= upper_bound]
+            else:
+                normal_sales = non_zero_sales
 
-            statistical_reorder_point = recent_avg_daily_demand * product.delivery_time
-            manual_minimum = product.minimum_stock or 0
-            reorder_point = max(statistical_reorder_point, manual_minimum)
+            if len(normal_sales) >= MIN_SALES_FOR_TREND:
+                x_values = np.array([(d - daily_sales.index[0]).days for d in normal_sales.index])
+                y_values = normal_sales.values
+                
+                slope, intercept = np.polyfit(x_values, y_values, 1)
+                predicted_magnitude = slope * (num_days_in_period - 1) + intercept
+                sales_frequency = len(normal_sales) / num_days_in_period
+                projected_daily_demand = max(0, predicted_magnitude * sales_frequency)
+
+                predicted_y = slope * x_values + intercept
+                see = np.sqrt(np.sum((y_values - predicted_y)**2) / len(x_values)) if len(x_values) > 2 else daily_sales.std()
+            else:
+                projected_daily_demand = daily_sales.mean()
+                see = daily_sales.std()
+
+            safety_stock = Z_SCORE * see * np.sqrt(product.delivery_time)
+            demand_during_lead_time = projected_daily_demand * product.delivery_time
+            reorder_point = demand_during_lead_time + safety_stock
+            reorder_point = max(reorder_point, product.minimum_stock or 0)
 
             effective_stock = product.stock + product.in_transit_quantity
-
+            
             if effective_stock <= reorder_point:
-                max_order_size_historical = product_sales['quantity'].max() if not product_sales.empty else 0
+                # --- ПОЧАТОК ЗМІНИ: Застосування коефіцієнту агресивності ---
+                demand_for_cycle = projected_daily_demand * ORDER_CYCLE * AGGRESSIVENESS_FACTOR
+                # --- КІНЕЦЬ ЗМІНИ ---
                 
-                is_demand_active = recent_avg_daily_demand > 0
-                
-                backlog_demand = (max_order_size_historical * LARGE_ORDER_COVERAGE_PERCENT) if is_demand_active else 0
-                future_supply = (recent_avg_daily_demand * product.delivery_time * LEAD_TIME_MULTIPLIER * stability_factor) if is_demand_active else 0
-                
-                target_stock = reorder_point + future_supply + backlog_demand
-                order_quantity = round(target_stock - effective_stock)
+                target_inventory_level = demand_for_cycle + demand_during_lead_time + safety_stock
+                order_quantity = round(target_inventory_level - effective_stock)
 
                 if order_quantity > 0:
-                    # ▼▼▼ ДОДАНО ПОЛЕ 'request_count' ▼▼▼
                     products_to_order.append({
                         'sku': product.sku, 'name': product.name, 'stock': product.stock,
                         'in_transit': product.in_transit_quantity, 'delivery_time': product.delivery_time,
-                        'sales_in_period': int(product_sales['quantity'].sum()),
+                        'sales_in_period': int(daily_sales.sum()),
                         'request_count': len(product_sales),
                         'order_quantity': order_quantity, 'category': json.loads(product.xml_data or '{}').get('product_category', "Без категорії")
                     })

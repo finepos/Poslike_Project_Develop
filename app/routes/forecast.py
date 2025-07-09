@@ -4,9 +4,12 @@ from datetime import datetime, timedelta
 import pandas as pd
 from itertools import groupby
 import re
+from io import BytesIO
 
-from flask import render_template, current_app, request, jsonify
+# ▼▼▼ ДОДАНО ІМПОРТИ ▼▼▼
+from flask import render_template, current_app, request, jsonify, send_file
 from sqlalchemy import func, or_
+from openpyxl import Workbook
 
 from . import bp
 from ..models import Product, AnalyticsData
@@ -143,3 +146,54 @@ def calculate_forecast_api():
     except Exception as e:
         current_app.logger.error(f"Forecast API error: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+    
+# ▼▼▼ ДОДАНО НОВИЙ МАРШРУТ ДЛЯ ЕКСПОРТУ ▼▼▼
+@bp.route('/forecast/export-xls', methods=['POST'])
+def export_forecast_xls():
+    """
+    Генерує та відправляє XLS-файл з обраними для замовлення товарами.
+    """
+    selected_products_json = request.form.get('selected_products')
+    if not selected_products_json:
+        # Це не повинно відбуватися з увімкненим JS, але є запобіжником
+        return "Не обрано товари для експорту", 400
+
+    try:
+        selected_products = json.loads(selected_products_json)
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Прогноз замовлення"
+        
+        # Створюємо заголовки
+        ws.append(['SKU', 'Назва товару', 'К-ть до замовлення'])
+        
+        # Заповнюємо даними
+        for product_data in selected_products:
+            ws.append([
+                product_data.get('sku'),
+                product_data.get('name'),
+                product_data.get('order_quantity')
+            ])
+            
+        # Налаштовуємо ширину колонок для кращої читабельності
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 80
+        ws.column_dimensions['C'].width = 20
+
+        # Зберігаємо файл у буфер в пам'яті
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        filename = f"forecast_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    except Exception as e:
+        current_app.logger.error(f"Forecast export error: {e}", exc_info=True)
+        return "Помилка при створенні файлу.", 500

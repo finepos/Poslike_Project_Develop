@@ -31,14 +31,8 @@
 <div class="filter-form">
     <div class="filter-main-row">
         <div class="filter-controls">
-            <div class="input-group">
-                <label for="start_date">Період з:</label>
-                <input type="text" id="start_date" name="start_date">
-            </div>
-            <div class="input-group">
-                <label for="end_date">по:</label>
-                <input type="text" id="end_date" name="end_date">
-            </div>
+            <div class="input-group"><label for="start_date">Період з:</label><input type="text" id="start_date" name="start_date"></div>
+            <div class="input-group"><label for="end_date">по:</label><input type="text" id="end_date" name="end_date"></div>
             <div class="input-group">
                 <label>Категорії:</label>
                 <div class="multiselect-container">
@@ -54,11 +48,16 @@
         </div>
         <div class="filter-actions">
             <button type="button" id="calculateBtn" class="button">Розрахувати</button>
+            <button type="submit" form="exportForm" id="exportBtn" class="button" style="display: none;">Експорт XLS</button>
             <a href="{{ url_for('main.forecast_index') }}" class="button button-secondary">Очистити</a>
         </div>
     </div>
     <div id="paramFiltersContainer" style="padding: 0 20px; display: none;"></div>
 </div>
+
+<form id="exportForm" method="POST" action="{{ url_for('main.export_forecast_xls') }}">
+    <input type="hidden" name="selected_products" id="selectedProductsInput">
+</form>
 
 <div id="forecastResultsContainer">
     <p style="text-align: center; margin-top: 30px; font-size: 1.2em;">Будь ласка, оберіть одну або декілька категорій для розрахунку прогнозу.</p>
@@ -100,6 +99,8 @@
 
         categoryNames.forEach(name => formData.append('search_category', name));
         
+        await updateParamFilters(categoryNames, {});
+        
         const paramFilters = document.querySelectorAll('#paramFiltersContainer select');
         paramFilters.forEach(select => { if (select.value) formData.append(select.name, select.value); });
         
@@ -122,18 +123,32 @@
         resultsContainer.innerHTML = '';
         if (!productsByCategory || Object.keys(productsByCategory).length === 0) {
             resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px;">Не знайдено товарів, які потребують замовлення на основі поточної статистики та обраного періоду.</p>';
+            document.getElementById('exportBtn').style.display = 'none';
             return;
         }
 
+        let tableHtml = '';
         for (const category in productsByCategory) {
             const products = productsByCategory[category];
-            let tableHtml = `<h2 class="category-header">${category}</h2><table id="forecast-table"><thead><tr><th style="width: 15%;">SKU</th><th>Назва товару</th><th style="width: 8%; text-align: center;">Залишок</th><th style="width: 8%; text-align: center;">В дорозі</th><th style="width: 10%; text-align: center;">Продано</th><th style="width: 10%; text-align: center;">Термін дост.</th><th style="width: 12%; text-align: center; background-color: #d4edda;">К-ть до замовлення</th></tr></thead><tbody>`;
+            tableHtml += `<h2 class="category-header">${category}</h2><table id="forecast-table-${category.replace(/\s+/g, '-')}" class="forecast-table"><thead><tr>
+                        <th style="width: 2%; text-align: center;"><input type="checkbox" class="select-all-cat-checkbox"></th>
+                        <th style="width: 12%;">SKU</th><th>Назва товару</th>
+                        <th style="width: 8%; text-align: center;">Залишок</th><th style="width: 8%; text-align: center;">В дорозі</th>
+                        <th style="width: 10%; text-align: center;">Продано</th><th style="width: 10%; text-align: center;">Термін дост.</th>
+                        <th style="width: 12%; text-align: center; background-color: #d4edda;">К-ть до замовлення</th></tr></thead><tbody>`;
+            
             products.forEach(p => {
-                tableHtml += `<tr><td>${p.sku}</td><td>${p.name}</td><td style="text-align: center;">${p.stock}</td><td style="text-align: center;">${p.in_transit}</td><td style="text-align: center;">${p.sales_in_period}</td><td style="text-align: center;">${p.delivery_time}</td><td style="text-align: center; font-weight: bold; background-color: #d4edda;">${p.order_quantity}</td></tr>`;
+                tableHtml += `<tr data-sku="${p.sku}" data-name="${p.name}" data-order-quantity="${p.order_quantity}">
+                    <td style="text-align: center;"><input type="checkbox" class="forecast-product-checkbox"></td>
+                    <td>${p.sku}</td><td>${p.name}</td>
+                    <td style="text-align: center;">${p.stock}</td><td style="text-align: center;">${p.in_transit}</td>
+                    <td style="text-align: center;">${p.sales_in_period}</td><td style="text-align: center;">${p.delivery_time}</td>
+                    <td style="text-align: center; font-weight: bold; background-color: #d4edda;">${p.order_quantity}</td></tr>`;
             });
             tableHtml += '</tbody></table>';
-            resultsContainer.insertAdjacentHTML('beforeend', tableHtml);
         }
+        resultsContainer.innerHTML = tableHtml;
+        document.getElementById('exportBtn').style.display = 'inline-block';
     }
 
     // --- ЛОГІКА ДЛЯ ФІЛЬТРІВ (КАТЕГОРІЇ + ПАРАМЕТРИ) ---
@@ -201,6 +216,40 @@
         });
         
         document.getElementById('calculateBtn').addEventListener('click', fetchForecastData);
+
+        resultsContainer.addEventListener('change', (event) => {
+            if (event.target.classList.contains('select-all-cat-checkbox')) {
+                const table = event.target.closest('table');
+                const isChecked = event.target.checked;
+                table.querySelectorAll('.forecast-product-checkbox').forEach(cb => {
+                    cb.checked = isChecked;
+                });
+            }
+        });
+
+        const exportForm = document.getElementById('exportForm');
+        if (exportForm) {
+            exportForm.addEventListener('submit', (event) => {
+                const selectedCheckboxes = document.querySelectorAll('.forecast-product-checkbox:checked');
+                if (selectedCheckboxes.length === 0) {
+                    event.preventDefault();
+                    showToast('Будь ласка, оберіть хоча б один товар для експорту.', 'error');
+                    return;
+                }
+                
+                const selectedProductsData = [];
+                selectedCheckboxes.forEach(cb => {
+                    const row = cb.closest('tr');
+                    selectedProductsData.push({
+                        sku: row.dataset.sku,
+                        name: row.dataset.name,
+                        order_quantity: row.dataset.orderQuantity
+                    });
+                });
+                
+                document.getElementById('selectedProductsInput').value = JSON.stringify(selectedProductsData);
+            });
+        }
 
         if (document.querySelectorAll('#categoryList input[type="checkbox"]:checked').length > 0) {
             fetchForecastData();

@@ -3,15 +3,24 @@
 
 {% block content %}
 <style>
-    .category-header {
-        background-color: #e9ecef;
-        padding: 10px;
-        margin-top: 25px;
-        border-radius: 5px;
-    }
-    #forecast-table tbody tr:nth-child(even) {
-        background-color: #f9f9f9;
-    }
+    .category-header { background-color: #e9ecef; padding: 10px; margin-top: 25px; border-radius: 5px; }
+    #forecast-table tbody tr:nth-child(even) { background-color: #f9f9f9; }
+    .filter-form { margin: 20px 0; padding: 15px 20px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px; }
+    .filter-main-row { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 15px; }
+    .filter-controls { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
+    .filter-actions { display: flex; gap: 10px; }
+    .input-group { display: flex; flex-direction: column; gap: 5px; }
+    .input-group label { font-weight: normal; margin: 0; font-size: 0.9em; color: #555; }
+    .input-group input, .input-group select, .input-group .select-box { padding: 5px 8px; height: 38px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; margin: 0; }
+    .multiselect-container { position: relative; min-width: 250px; }
+    .select-box { border: 1px solid #ccc; border-radius: 4px; padding: 0 10px; cursor: pointer; background-color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 38px; display: flex; align-items: center; }
+    .select-box.has-selection { color: #000; }
+    .checkboxes { display: none; position: absolute; background-color: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 10px; z-index: 100; width: 100%; max-height: 250px; overflow-y: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    .checkboxes label { display: flex; align-items: center; padding: 3px 5px; font-weight: normal; font-size: 14px; cursor: pointer; line-height: 1.2; }
+    .checkboxes label:hover { background-color: #f2f2f2; }
+    .checkboxes input[type="text"] { width: 100%; margin-bottom: 10px; height: 32px; box-sizing: border-box; }
+    .checkboxes label input[type="checkbox"] { width: auto; height: auto; margin: 0 8px 0 0; flex-shrink: 0; padding: 0; }
+    #paramFiltersContainer { margin-top: 15px; }
 </style>
 
 <div class="header-controls">
@@ -19,43 +28,183 @@
     <a href="{{ url_for('main.analytics_index') }}" class="button button-secondary">&larr; Назад до аналітики</a>
 </div>
 
-{% if error %}
-    <div class="flash danger">
-        <p>Сталася помилка при генерації прогнозу:</p>
-        <p><strong>{{ error }}</strong></p>
+<div class="filter-form">
+    <div class="filter-main-row">
+        <div class="filter-controls">
+            <div class="input-group">
+                <label for="start_date">Період з:</label>
+                <input type="text" id="start_date" name="start_date">
+            </div>
+            <div class="input-group">
+                <label for="end_date">по:</label>
+                <input type="text" id="end_date" name="end_date">
+            </div>
+            <div class="input-group">
+                <label>Категорії:</label>
+                <div class="multiselect-container">
+                    <div class="select-box" onclick="toggleCategoryCheckboxes()"><span id="categorySelectText">Оберіть категорії...</span></div>
+                    <div class="checkboxes" id="categoryCheckboxes">
+                        <input type="text" id="categorySearchInput" onkeyup="filterCategories()" placeholder="Пошук по категоріях...">
+                        <div id="categoryList">
+                            {% for category in all_categories %}<label><input type="checkbox" name="search_category" value="{{ category }}"> {{ category }}</label>{% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="filter-actions">
+            <button type="button" id="calculateBtn" class="button">Розрахувати</button>
+            <a href="{{ url_for('main.forecast_index') }}" class="button button-secondary">Очистити</a>
+        </div>
     </div>
-{% elif products_by_category %}
-    {% for category, products in products_by_category.items() %}
-        <h2 class="category-header">{{ category }}</h2>
-        <table id="forecast-table">
-            <thead>
-                <tr>
-                    <th style="width: 15%;">SKU</th>
-                    <th>Назва товару</th>
-                    <th style="width: 8%; text-align: center;">Залишок</th>
-                    <th style="width: 8%; text-align: center;">В дорозі</th>
-                    <th style="width: 10%; text-align: center;">Продано (30д)</th>
-                    <th style="width: 10%; text-align: center;">Термін дост.</th>
-                    <th style="width: 12%; text-align: center; background-color: #d4edda;">К-ть до замовлення</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in products %}
-                <tr>
-                    <td>{{ p.sku }}</td>
-                    <td>{{ p.name }}</td>
-                    <td style="text-align: center;">{{ p.stock }}</td>
-                    <td style="text-align: center;">{{ p.in_transit }}</td>
-                    <td style="text-align: center;">{{ p.sales_last_30_days }}</td>
-                    <td style="text-align: center;">{{ p.delivery_time }}</td>
-                    <td style="text-align: center; font-weight: bold; background-color: #d4edda;">{{ p.order_quantity }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endfor %}
-{% else %}
-    <p style="text-align: center; margin-top: 30px;">Не знайдено товарів, які потребують замовлення на основі поточної статистики.</p>
-{% endif %}
+    <div id="paramFiltersContainer" style="padding: 0 20px; display: none;"></div>
+</div>
 
+<div id="forecastResultsContainer">
+    <p style="text-align: center; margin-top: 30px; font-size: 1.2em;">Будь ласка, оберіть одну або декілька категорій для розрахунку прогнозу.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const resultsContainer = document.getElementById('forecastResultsContainer');
+    const paramFiltersContainer = document.getElementById('paramFiltersContainer');
+    let expanded = false;
+
+    // --- УНІВЕРСАЛЬНА ФУНКЦІЯ ДЛЯ СПОВІЩЕНЬ ---
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => { toast.classList.add('show'); }, 100);
+        setTimeout(() => { toast.classList.remove('show'); toast.addEventListener('transitionend', () => toast.remove()); }, 5000);
+    }
+    
+    // --- ЛОГІКА ДЛЯ ДИНАМІЧНОГО ОНОВЛЕННЯ ---
+    async function fetchForecastData() {
+        const formData = new FormData();
+        formData.append('start_date', document.querySelector("#start_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
+        formData.append('end_date', document.querySelector("#end_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
+        
+        const selectedCategories = document.querySelectorAll('#categoryList input[type="checkbox"]:checked');
+        const categoryNames = Array.from(selectedCategories).map(cb => cb.value);
+
+        if (categoryNames.length === 0) {
+            resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px; font-size: 1.2em;">Будь ласка, оберіть одну або декілька категорій для розрахунку прогнозу.</p>';
+            await updateParamFilters(categoryNames, {});
+            return;
+        }
+
+        categoryNames.forEach(name => formData.append('search_category', name));
+        
+        const paramFilters = document.querySelectorAll('#paramFiltersContainer select');
+        paramFilters.forEach(select => { if (select.value) formData.append(select.name, select.value); });
+        
+        const queryParams = new URLSearchParams(formData).toString();
+        resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px;">Розрахунок прогнозу, зачекайте...</p>';
+
+        try {
+            const response = await fetch(`{{ url_for('main.calculate_forecast_api') }}?${queryParams}`);
+            const data = await response.json();
+            
+            await updateParamFilters(categoryNames, data.param_filters, data.show_param_filters);
+            renderForecastResults(data.products_by_category);
+            
+        } catch (error) {
+            resultsContainer.innerHTML = `<div class="flash danger">Помилка завантаження даних: ${error}</div>`;
+        }
+    }
+
+    function renderForecastResults(productsByCategory) {
+        resultsContainer.innerHTML = '';
+        if (!productsByCategory || Object.keys(productsByCategory).length === 0) {
+            resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px;">Не знайдено товарів, які потребують замовлення на основі поточної статистики та обраного періоду.</p>';
+            return;
+        }
+
+        for (const category in productsByCategory) {
+            const products = productsByCategory[category];
+            let tableHtml = `<h2 class="category-header">${category}</h2><table id="forecast-table"><thead><tr><th style="width: 15%;">SKU</th><th>Назва товару</th><th style="width: 8%; text-align: center;">Залишок</th><th style="width: 8%; text-align: center;">В дорозі</th><th style="width: 10%; text-align: center;">Продано</th><th style="width: 10%; text-align: center;">Термін дост.</th><th style="width: 12%; text-align: center; background-color: #d4edda;">К-ть до замовлення</th></tr></thead><tbody>`;
+            products.forEach(p => {
+                tableHtml += `<tr><td>${p.sku}</td><td>${p.name}</td><td style="text-align: center;">${p.stock}</td><td style="text-align: center;">${p.in_transit}</td><td style="text-align: center;">${p.sales_in_period}</td><td style="text-align: center;">${p.delivery_time}</td><td style="text-align: center; font-weight: bold; background-color: #d4edda;">${p.order_quantity}</td></tr>`;
+            });
+            tableHtml += '</tbody></table>';
+            resultsContainer.insertAdjacentHTML('beforeend', tableHtml);
+        }
+    }
+
+    // --- ЛОГІКА ДЛЯ ФІЛЬТРІВ (КАТЕГОРІЇ + ПАРАМЕТРИ) ---
+    function toggleCategoryCheckboxes() { expanded = !expanded; document.getElementById("categoryCheckboxes").style.display = expanded ? "block" : "none"; }
+    function filterCategories() {const t=document.getElementById("categorySearchInput").value.toLowerCase(),e=document.getElementById("categoryList");for(let o=0;o<e.getElementsByTagName("label").length;o++){const n=e.getElementsByTagName("label")[o];(n.textContent||n.innerText).toLowerCase().indexOf(t)>-1?n.style.display="":n.style.display="none"}}
+    function updateCategorySelectText() {const t=[],e=document.querySelectorAll('#categoryList input[type="checkbox"]:checked');e.forEach(e=>{t.push(e.parentElement.textContent.trim())});const o=document.getElementById("categorySelectText"),n=o.parentElement;0===t.length?(o.textContent="Оберіть категорії...",n.classList.remove("has-selection")):(n.classList.add("has-selection"),o.textContent=t.length>2?`Обрано: ${t.length}`:t.join(", "))}
+    
+    async function updateParamFilters(categoryNames, paramFiltersData, showParamFilters) {
+        paramFiltersContainer.style.display = 'none';
+        paramFiltersContainer.innerHTML = '';
+        
+        if (!showParamFilters) return;
+        
+        const queryParams = new URLSearchParams(categoryNames.map(name => ['category', name]));
+
+        try {
+            const response = await fetch(`{{ url_for('main.get_params_for_category') }}?${queryParams.toString()}`);
+            const paramsData = await response.json();
+            
+            if (Object.keys(paramsData).length > 0) {
+                let filterRowHtml = '<div style="display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 15px; margin-top:15px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; background-color: #fff;">';
+                filterRowHtml += '<h4 style="width: 100%; text-align: center; margin:0 0 10px 0;">Фільтри по параметрах</h4>';
+                const sortedParamNames = Object.keys(paramsData).sort();
+                for (const paramName of sortedParamNames) {
+                    const values = paramsData[paramName];
+                    const selectName = `param_${paramName.replace(/[\s/]+/g, '_')}`;
+                    
+                    const currentVal = paramFiltersData ? paramFiltersData[paramName] : '';
+                    let optionsHTML = values.map(v => {
+                        const isSelected = currentVal === v ? 'selected' : '';
+                        return `<option value="${v}" ${isSelected}>${v}</option>`;
+                    }).join('');
+
+                    filterRowHtml += `<div class="input-group" style="flex: 1 1 180px;"><label>${paramName}</label><select name="${selectName}" onchange="fetchForecastData()"><option value="">Всі</option>${optionsHTML}</select></div>`;
+                }
+                filterRowHtml += '</div>';
+                paramFiltersContainer.innerHTML = filterRowHtml;
+                paramFiltersContainer.style.display = 'block';
+            }
+        } catch (error) { console.error("Помилка завантаження фільтрів по параметрах:", error); }
+    }
+    
+    // --- ПРИВ'ЯЗКА ОБРОБНИКІВ ПОДІЙ ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const flatpickrConfig = {
+            locale: "uk",
+            dateFormat: "Y-m-d",
+            altInput: true,
+            altFormat: "d.m.Y",
+            onChange: function(selectedDates, dateStr, instance) {
+                fetchForecastData();
+            }
+        };
+        flatpickr("#start_date", { ...flatpickrConfig, defaultDate: "{{ start_date }}" });
+        flatpickr("#end_date",   { ...flatpickrConfig, defaultDate: "{{ end_date }}" });
+
+        updateCategorySelectText();
+
+        document.querySelectorAll('#categoryList input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                updateCategorySelectText();
+                fetchForecastData();
+                toggleCategoryCheckboxes();
+            });
+        });
+        
+        document.getElementById('calculateBtn').addEventListener('click', fetchForecastData);
+
+        if (document.querySelectorAll('#categoryList input[type="checkbox"]:checked').length > 0) {
+            fetchForecastData();
+        }
+    });
+</script>
 {% endblock %}

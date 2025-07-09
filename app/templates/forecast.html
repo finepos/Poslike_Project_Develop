@@ -83,26 +83,30 @@
     }
     
     // --- ЛОГІКА ДЛЯ ДИНАМІЧНОГО ОНОВЛЕННЯ ---
-    async function fetchForecastData() {
+    // ▼▼▼ ПОЧАТОК ЗМІН ▼▼▼
+    async function fetchForecastData(updateFilters = false) {
         const formData = new FormData();
-        formData.append('start_date', document.querySelector("#start_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
-        formData.append('end_date', document.querySelector("#end_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
-        
         const selectedCategories = document.querySelectorAll('#categoryList input[type="checkbox"]:checked');
         const categoryNames = Array.from(selectedCategories).map(cb => cb.value);
 
+        // Додаємо дати, категорії та параметри до запиту
+        formData.append('start_date', document.querySelector("#start_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
+        formData.append('end_date', document.querySelector("#end_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
+        categoryNames.forEach(name => formData.append('search_category', name));
+        document.querySelectorAll('#paramFiltersContainer select').forEach(select => { 
+            if (select.value) formData.append(select.name, select.value); 
+        });
+
+        // Оновлюємо фільтри, тільки якщо це потрібно (напр. при зміні категорії)
+        if (updateFilters) {
+            await updateParamFilters(categoryNames);
+        }
+        
         if (categoryNames.length === 0) {
             resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px; font-size: 1.2em;">Будь ласка, оберіть одну або декілька категорій для розрахунку прогнозу.</p>';
-            await updateParamFilters(categoryNames, {});
+            paramFiltersContainer.style.display = 'none';
             return;
         }
-
-        categoryNames.forEach(name => formData.append('search_category', name));
-        
-        await updateParamFilters(categoryNames, {});
-        
-        const paramFilters = document.querySelectorAll('#paramFiltersContainer select');
-        paramFilters.forEach(select => { if (select.value) formData.append(select.name, select.value); });
         
         const queryParams = new URLSearchParams(formData).toString();
         resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px;">Розрахунок прогнозу, зачекайте...</p>';
@@ -111,13 +115,20 @@
             const response = await fetch(`{{ url_for('main.calculate_forecast_api') }}?${queryParams}`);
             const data = await response.json();
             
-            await updateParamFilters(categoryNames, data.param_filters, data.show_param_filters);
+            // Якщо сервер вказав, що фільтри треба показати (напр., для однієї категорії), показуємо контейнер
+            if (data.show_param_filters) {
+                paramFiltersContainer.style.display = 'block';
+            } else {
+                paramFiltersContainer.style.display = 'none';
+            }
+            
             renderForecastResults(data.products_by_category);
             
         } catch (error) {
             resultsContainer.innerHTML = `<div class="flash danger">Помилка завантаження даних: ${error}</div>`;
         }
     }
+    // ▲▲▲ КІНЕЦЬ ЗМІН ▲▲▲
 
     function renderForecastResults(productsByCategory) {
         resultsContainer.innerHTML = '';
@@ -154,13 +165,34 @@
     // --- ЛОГІКА ДЛЯ ФІЛЬТРІВ (КАТЕГОРІЇ + ПАРАМЕТРИ) ---
     function toggleCategoryCheckboxes() { expanded = !expanded; document.getElementById("categoryCheckboxes").style.display = expanded ? "block" : "none"; }
     function filterCategories() {const t=document.getElementById("categorySearchInput").value.toLowerCase(),e=document.getElementById("categoryList");for(let o=0;o<e.getElementsByTagName("label").length;o++){const n=e.getElementsByTagName("label")[o];(n.textContent||n.innerText).toLowerCase().indexOf(t)>-1?n.style.display="":n.style.display="none"}}
-    function updateCategorySelectText() {const t=[],e=document.querySelectorAll('#categoryList input[type="checkbox"]:checked');e.forEach(e=>{t.push(e.parentElement.textContent.trim())});const o=document.getElementById("categorySelectText"),n=o.parentElement;0===t.length?(o.textContent="Оберіть категорії...",n.classList.remove("has-selection")):(n.classList.add("has-selection"),o.textContent=t.length>2?`Обрано: ${t.length}`:t.join(", "))}
+    function updateCategorySelectText() {
+        const selectedTexts = [];
+        const checkboxes = document.querySelectorAll('#categoryList input[type="checkbox"]:checked');
+        checkboxes.forEach(cb => {
+            selectedTexts.push(cb.parentElement.textContent.trim());
+        });
+        const textElement = document.getElementById("categorySelectText");
+        const boxElement = textElement.parentElement;
+        if (selectedTexts.length === 0) {
+            textElement.textContent = "Оберіть категорії...";
+            boxElement.classList.remove("has-selection");
+        } else {
+            boxElement.classList.add("has-selection");
+            if (selectedTexts.length > 2) {
+                textElement.textContent = `Обрано: ${selectedTexts.length} категорії`;
+            } else {
+                textElement.textContent = selectedTexts.join(", ");
+            }
+        }
+    }
     
-    async function updateParamFilters(categoryNames, paramFiltersData, showParamFilters) {
-        paramFiltersContainer.style.display = 'none';
-        paramFiltersContainer.innerHTML = '';
-        
-        if (!showParamFilters) return;
+    // ▼▼▼ ПОЧАТОК ЗМІН ▼▼▼
+    async function updateParamFilters(categoryNames) {
+        if (categoryNames.length !== 1) { // Показуємо фільтри тільки для однієї категорії
+            paramFiltersContainer.style.display = 'none';
+            paramFiltersContainer.innerHTML = '';
+            return;
+        }
         
         const queryParams = new URLSearchParams(categoryNames.map(name => ['category', name]));
 
@@ -176,20 +208,21 @@
                     const values = paramsData[paramName];
                     const selectName = `param_${paramName.replace(/[\s/]+/g, '_')}`;
                     
-                    const currentVal = paramFiltersData ? paramFiltersData[paramName] : '';
-                    let optionsHTML = values.map(v => {
-                        const isSelected = currentVal === v ? 'selected' : '';
-                        return `<option value="${v}" ${isSelected}>${v}</option>`;
-                    }).join('');
+                    let optionsHTML = values.map(v => `<option value="${v}">${v}</option>`).join('');
 
+                    // Змінено onchange, тепер він викликає fetchForecastData без параметрів
                     filterRowHtml += `<div class="input-group" style="flex: 1 1 180px;"><label>${paramName}</label><select name="${selectName}" onchange="fetchForecastData()"><option value="">Всі</option>${optionsHTML}</select></div>`;
                 }
                 filterRowHtml += '</div>';
                 paramFiltersContainer.innerHTML = filterRowHtml;
                 paramFiltersContainer.style.display = 'block';
+            } else {
+                paramFiltersContainer.style.display = 'none';
+                paramFiltersContainer.innerHTML = '';
             }
         } catch (error) { console.error("Помилка завантаження фільтрів по параметрах:", error); }
     }
+    // ▲▲▲ КІНЕЦЬ ЗМІН ▲▲▲
     
     // --- ПРИВ'ЯЗКА ОБРОБНИКІВ ПОДІЙ ---
     document.addEventListener('DOMContentLoaded', () => {
@@ -199,7 +232,7 @@
             altInput: true,
             altFormat: "d.m.Y",
             onChange: function(selectedDates, dateStr, instance) {
-                fetchForecastData();
+                fetchForecastData(true); // При зміні дати оновлюємо фільтри
             }
         };
         flatpickr("#start_date", { ...flatpickrConfig, defaultDate: "{{ start_date }}" });
@@ -210,12 +243,12 @@
         document.querySelectorAll('#categoryList input[type="checkbox"]').forEach(cb => {
             cb.addEventListener('change', () => {
                 updateCategorySelectText();
-                fetchForecastData();
+                fetchForecastData(true); // При зміні категорії завжди оновлюємо фільтри
                 toggleCategoryCheckboxes();
             });
         });
         
-        document.getElementById('calculateBtn').addEventListener('click', fetchForecastData);
+        document.getElementById('calculateBtn').addEventListener('click', () => fetchForecastData(true));
 
         resultsContainer.addEventListener('change', (event) => {
             if (event.target.classList.contains('select-all-cat-checkbox')) {
@@ -252,7 +285,7 @@
         }
 
         if (document.querySelectorAll('#categoryList input[type="checkbox"]:checked').length > 0) {
-            fetchForecastData();
+            fetchForecastData(true);
         }
     });
 </script>

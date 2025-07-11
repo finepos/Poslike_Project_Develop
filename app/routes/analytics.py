@@ -209,7 +209,6 @@ def analytics_index():
 
 @bp.route('/analytics/settings', methods=['GET', 'POST'])
 def analytics_settings():
-    # ... (код цієї функції залишається без змін) ...
     if request.method == 'POST':
         if 'import_file' not in request.files:
             flash('Файл для імпорту не вибрано.', 'danger')
@@ -263,6 +262,7 @@ def analytics_settings():
                 
                 new_records_added = 0
                 duplicates_skipped = 0
+                skipped_duplicates_info = [] 
 
                 for index, row in df.iterrows():
                     sku = row.get('SKU [Товари/Послуги]')
@@ -298,6 +298,9 @@ def analytics_settings():
 
                     if record_tuple in existing_records_set:
                         duplicates_skipped += 1
+                        # --- ПОЧАТОК ЗМІН: Прибрано обмеження на кількість ---
+                        skipped_duplicates_info.append(f"SKU: {sku}, Дата: {sale_date}, К-ть: {quantity}")
+                        # --- КІНЕЦЬ ЗМІН ---
                         continue 
                     
                     data_row = AnalyticsData(import_id=new_import.id, raw_data=row.to_json())
@@ -313,8 +316,16 @@ def analytics_settings():
                     new_records_added += 1
                 
                 db.session.commit()
-                flash(f'Імпорт завершено. Додано нових записів: {new_records_added}. Пропущено дублікатів: {duplicates_skipped}.', 'success')
                 
+                success_message = f'Імпорт завершено. Додано нових записів: {new_records_added}.'
+                if duplicates_skipped > 0:
+                    success_message += f"<br><b>Пропущено дублікатів: {duplicates_skipped}.</b>"
+                    if skipped_duplicates_info:
+                        skipped_details = "<br> - " + "<br> - ".join(skipped_duplicates_info)
+                        success_message += f"<br><br><i>Пропущені записи:</i>{skipped_details}"
+
+                flash(success_message, 'success')
+
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.error(f"Import Error: {e}", exc_info=True)
@@ -324,7 +335,6 @@ def analytics_settings():
 
     imports = AnalyticsImport.query.order_by(AnalyticsImport.import_date.desc()).all()
     return render_template('analytics/settings.html', imports=imports)
-
 
 @bp.route('/analytics/delete/<int:import_id>', methods=['POST'])
 def analytics_delete(import_id):
@@ -376,7 +386,6 @@ def get_applications_for_sku(sku):
         return jsonify({'error': str(e)}), 500
 
 
-# ▼▼▼ НОВИЙ МАРШРУТ ДЛЯ ОТРИМАННЯ ЗАЯВОК КЛІЄНТА ▼▼▼
 @bp.route('/api/analytics/client-applications/<string:phone_number>')
 def get_client_applications(phone_number):
     """API для отримання всіх заявок за номером телефону."""

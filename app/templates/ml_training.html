@@ -1,191 +1,193 @@
 {% extends "layout.html" %}
-{% block title %}Машинне навчання для прогнозу{% endblock %}
+{% block title %}Навчання моделі прогнозування{% endblock %}
 
 {% block content %}
 <style>
-    .training-container { max-width: 1200px; margin: auto; }
-    .input-section { padding: 20px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 20px; }
-    .training-table-wrapper { margin-top: 20px; }
-    #trainingTable td, #trainingTable th { text-align: center; vertical-align: middle; }
-    .action-cell button { background: none; border: none; color: red; cursor: pointer; font-size: 1.5em; padding: 0 10px; }
+    .training-container { display: flex; gap: 30px; flex-wrap: wrap; }
+    .form-section { flex: 1; min-width: 350px; }
+    .table-section { flex: 2; min-width: 450px; }
+    #trainingSetTable input[type="number"] { width: 80px; padding: 5px; height: auto; }
+    #trainingSetTable .remove-btn { padding: 5px 10px; background-color: #dc3545; }
+    .category-header-row td {
+        background-color: #e9ecef;
+        font-weight: bold;
+        padding: 10px;
+        text-align: left !important;
+    }
 </style>
 
+<div class="header-controls">
+    <h1>Навчання моделі прогнозування</h1>
+    <a href="{{ url_for('main.forecast_index') }}" class="button button-secondary">&larr; Назад до прогнозу</a>
+</div>
+
+<p style="max-width: 800px; margin: 15px auto; text-align: center;">
+    На цій сторінці ви можете створити "навчальний набір" для моделі. Додайте товари, для яких ви знаєте оптимальну кількість замовлення, і вкажіть цю кількість. Модель проаналізує їх характеристики та історію продажів, щоб навчитися прогнозувати замовлення для інших, схожих товарів.
+</p>
+
 <div class="training-container">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h1>Навчання моделі прогнозування</h1>
-        <a href="{{ url_for('main.forecast_index') }}" class="button button-secondary">&larr; Назад до прогнозу</a>
-    </div>
-
-    <div class="input-section">
-        <h3>Додати товар до навчального набору</h3>
-        <div style="display: flex; gap: 15px; align-items: flex-end;">
-            <div style="flex-grow: 1;">
-                <label for="sku_input">Введіть SKU товару</label>
-                <input type="text" id="sku_input" placeholder="Точне співпадіння...">
+    <div class="form-section">
+        <h3>Додати товар до набору</h3>
+        <form id="addProductForm">
+            <div class="form-group">
+                <label for="skuInput">SKU товару</label>
+                <input type="text" id="skuInput" placeholder="Введіть точний SKU" required>
             </div>
-            <button id="addProductBtn" class="button">Додати</button>
-        </div>
+            <button type="submit">Знайти та додати</button>
+        </form>
     </div>
-
-    <div class="training-table-wrapper">
+    <div class="table-section">
         <h3>Навчальний набір</h3>
-        <p>Для цих товарів буде встановлено еталонну кількість для замовлення. Модель навчиться на їхніх характеристиках, щоб прогнозувати кількість для інших товарів.</p>
-        <table id="trainingTable">
-            <thead>
-                <tr>
-                    <th>SKU</th>
-                    <th>Назва товару</th>
-                    <th>Кількість для замовлення (еталон)</th>
-                    <th style="width: 5%;">Дії</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in training_set %}
-                <tr data-sku="{{ item.sku }}">
-                    <td>{{ item.sku }}</td>
-                    <td class="name-cell" style="text-align: left;">...завантаження...</td>
-                    <td><input type="number" class="target-quantity-input" value="{{ item.target_quantity }}" min="0" style="width: 150px; text-align: center; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"></td>
-                    <td class="action-cell"><button class="remove-row-btn">&times;</button></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <div style="text-align: center; margin-top: 30px; display: flex; gap: 20px; justify-content: center;">
-        <button id="saveAndTrainBtn" class="button" style="padding: 15px 30px; font-size: 1.2em; display: none;">Зберегти набір та навчити модель</button>
+        <p><small>Кількість товарів у наборі: <span id="trainingSetCount">0</span></small></p>
+        <div style="max-height: 50vh; overflow-y: auto;">
+            <table id="trainingSetTable">
+                <thead>
+                    <tr>
+                        <th>SKU</th>
+                        <th>Назва товару</th>
+                        <th>К-ть для замовлення</th>
+                        <th>Дії</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {# --- ПОЧАТОК ЗМІН: Вкладений цикл для груп --- #}
+                    {% for category, products in training_set_grouped.items() %}
+                        <tr class="category-header-row">
+                            <td colspan="4">{{ category }}</td>
+                        </tr>
+                        {% for item in products %}
+                            <tr data-sku="{{ item.sku }}">
+                                <td>{{ item.sku }}</td>
+                                <td>{{ item.name }}</td>
+                                <td><input type="number" class="quantity-input" value="{{ item.target_quantity }}" min="0"></td>
+                                <td><button class="remove-btn" onclick="removeTrainingItem(this)">X</button></td>
+                            </tr>
+                        {% endfor %}
+                    {% endfor %}
+                    {# --- КІНЕЦЬ ЗМІН --- #}
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top: 20px; display: flex; gap: 15px;">
+            <button id="saveTrainingSetBtn" class="button">Зберегти набір</button>
+            <button id="trainModelBtn" class="button button-secondary">Навчити модель</button>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    const skuInput = document.getElementById('sku_input');
-    const addProductBtn = document.getElementById('addProductBtn');
-    const trainingTableBody = document.querySelector('#trainingTable tbody');
-    const saveAndTrainBtn = document.getElementById('saveAndTrainBtn');
+    const addProductForm = document.getElementById('addProductForm');
+    const skuInput = document.getElementById('skuInput');
+    const trainingSetTableBody = document.querySelector('#trainingSetTable tbody');
+    const trainingSetCountSpan = document.getElementById('trainingSetCount');
 
-    function checkTableState() {
-        const rowCount = trainingTableBody.querySelectorAll('tr').length;
-        saveAndTrainBtn.style.display = rowCount > 0 ? 'inline-block' : 'none';
+    function updateCount() {
+        trainingSetCountSpan.textContent = trainingSetTableBody.querySelectorAll('tr[data-sku]').length;
     }
 
-    async function addRowToTable(sku) {
-        if (trainingTableBody.querySelector(`tr[data-sku="${sku}"]`)) {
-            showToast('Цей товар вже є у наборі.', 'error');
+    // --- ПОЧАТОК ЗМІН: Оновлена логіка видалення ---
+    function removeTrainingItem(button) {
+        const row = button.closest('tr');
+        const previousRow = row.previousElementSibling;
+        row.remove();
+
+        // Перевіряємо, чи був попередній рядок заголовком категорії
+        if (previousRow && previousRow.classList.contains('category-header-row')) {
+            const nextRow = previousRow.nextElementSibling;
+            // Якщо наступного рядка немає, або наступний - це інший заголовок, значить категорія порожня
+            if (!nextRow || nextRow.classList.contains('category-header-row')) {
+                previousRow.remove();
+            }
+        }
+        updateCount();
+    }
+    // --- КІНЕЦЬ ЗМІН ---
+
+    addProductForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const sku = skuInput.value.trim();
+        if (!sku) return;
+
+        if (trainingSetTableBody.querySelector(`tr[data-sku="${sku}"]`)) {
+            showToast('Цей товар вже є у навчальному наборі.', 'warning');
             return;
         }
-        addProductBtn.disabled = true;
+        
+        showToast('Пошук товару... Будь ласка, зачекайте.', 'success');
+        
         try {
-            const response = await fetch(`/api/forecast/get_product_for_training?sku=${sku}`);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Помилка сервера');
+            const response = await fetch(`{{ url_for('main.get_product_for_training') }}?sku=${sku}`);
+            const data = await response.json();
+
+            if (response.ok) {
+                const rows = trainingSetTableBody.querySelectorAll('tr[data-sku]');
+                const training_data = [];
+                rows.forEach(row => {
+                    training_data.push({ 
+                        sku: row.dataset.sku, 
+                        quantity: row.querySelector('.quantity-input').value 
+                    });
+                });
+                training_data.push({ sku: data.sku, quantity: 1 });
+
+                await fetch('{{ url_for('main.save_training_data') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ training_data })
+                });
+
+                window.location.reload();
+            } else {
+                showToast(data.error || 'Сталася помилка', 'error');
             }
-            const product = await response.json();
-            const newRow = document.createElement('tr');
-            newRow.dataset.sku = product.sku;
-            newRow.innerHTML = `
-                <td>${product.sku}</td>
-                <td style="text-align: left;">${product.name}</td>
-                <td><input type="number" class="target-quantity-input" value="1" min="0" style="width: 150px; text-align: center; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"></td>
-                <td class="action-cell"><button class="remove-row-btn">&times;</button></td>
-            `;
-            trainingTableBody.appendChild(newRow);
-            skuInput.value = '';
-            checkTableState();
         } catch (error) {
-            showToast(error.message, 'error');
-        } finally {
-            addProductBtn.disabled = false;
-        }
-    }
-
-    function fetchNamesForExistingRows() {
-        trainingTableBody.querySelectorAll('tr').forEach(async (row) => {
-            const sku = row.dataset.sku;
-            const nameCell = row.querySelector('.name-cell');
-            try {
-                const response = await fetch(`/api/forecast/get_product_for_training?sku=${sku}`);
-                if (!response.ok) return;
-                const product = await response.json();
-                nameCell.textContent = product.name;
-            } catch (e) {
-                nameCell.textContent = 'Не вдалося завантажити назву';
-                nameCell.style.color = 'red';
-            }
-        });
-    }
-
-    addProductBtn.addEventListener('click', () => {
-        const sku = skuInput.value.trim();
-        if (sku) addRowToTable(sku);
-    });
-    skuInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            addProductBtn.click();
-        }
-    });
-    trainingTableBody.addEventListener('click', (e) => {
-        if (e.target.classList.contains('remove-row-btn')) {
-            e.target.closest('tr').remove();
-            checkTableState();
+            showToast('Помилка мережі. Не вдалося знайти товар.', 'error');
         }
     });
 
-    saveAndTrainBtn.addEventListener('click', async () => {
-        const rows = trainingTableBody.querySelectorAll('tr');
-        const trainingData = [];
-        let hasInvalidData = false;
+    document.getElementById('saveTrainingSetBtn').addEventListener('click', async () => {
+        const rows = trainingSetTableBody.querySelectorAll('tr[data-sku]');
+        const training_data = [];
         rows.forEach(row => {
             const sku = row.dataset.sku;
-            const quantityInput = row.querySelector('.target-quantity-input');
-            const quantity = parseInt(quantityInput.value, 10);
-            
-            // --- ПОЧАТОК ЗМІН ---
-            // Дозволяємо 0, але не дозволяємо від'ємні числа або порожнє поле
-            if (isNaN(quantity) || quantity < 0) { 
-                quantityInput.style.border = '2px solid red';
-                hasInvalidData = true;
-            } else {
-                quantityInput.style.border = '1px solid #ccc';
-                trainingData.push({ sku, quantity });
-            }
+            const quantity = row.querySelector('.quantity-input').value;
+            training_data.push({ sku, quantity });
         });
-        if (hasInvalidData) {
-            // Оновлюємо текст помилки
-            showToast('Будь ласка, введіть коректну кількість (0 або більше).', 'error');
-            return;
-        }
-        // --- КІНЕЦЬ ЗМІН ---
 
-        saveAndTrainBtn.disabled = true;
-        saveAndTrainBtn.textContent = 'Зберігаємо та навчаємо...';
         try {
-            const saveResponse = await fetch('/api/forecast/save_training_data', {
+            const response = await fetch('{{ url_for('main.save_training_data') }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ training_data: trainingData })
+                body: JSON.stringify({ training_data })
             });
-            const saveData = await saveResponse.json();
-            if (!saveResponse.ok) throw new Error(saveData.error || 'Помилка збереження');
-            showToast(saveData.message, 'success');
-            const trainResponse = await fetch('/api/forecast/train_model', { method: 'POST' });
-            const trainData = await trainResponse.json();
-            if (!trainResponse.ok) throw new Error(trainData.error || 'Помилка навчання');
-            showToast(trainData.message, 'success');
+            const result = await response.json();
+            showToast(result.message || result.error, response.ok ? 'success' : 'error');
         } catch (error) {
-            showToast(error.message, 'error');
-        } finally {
-            saveAndTrainBtn.disabled = false;
-            saveAndTrainBtn.textContent = 'Зберегти набір та навчити модель';
+            showToast('Помилка збереження набору.', 'error');
         }
     });
 
-    fetchNamesForExistingRows();
-    checkTableState();
-});
+    document.getElementById('trainModelBtn').addEventListener('click', async (e) => {
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = 'Навчання...';
+        showToast('Процес навчання розпочато. Це може зайняти деякий час...', 'success');
+
+        try {
+            const response = await fetch('{{ url_for('main.train_model') }}', { method: 'POST' });
+            const result = await response.json();
+            showToast(result.message || result.error, response.ok ? 'success' : 'error');
+        } catch (error) {
+            showToast('Помилка під час навчання моделі.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Навчити модель';
+        }
+    });
+    
+    document.addEventListener('DOMContentLoaded', updateCount);
+
 </script>
 {% endblock %}

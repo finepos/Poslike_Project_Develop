@@ -5,7 +5,9 @@
         flashes.forEach(function(flash) {
             setTimeout(function() {
                 flash.style.display = "none";
-            }, 5000);
+            // --- ПОЧАТОК ЗМІН: Збільшено час до 20 секунд ---
+            }, 20000); 
+            // --- КІНЕЦЬ ЗМІН ---
         });
     });
 

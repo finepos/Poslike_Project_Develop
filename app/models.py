@@ -155,14 +155,18 @@ class AnalyticsData(db.Model):
     raw_data = db.Column(db.Text)
 
 class TrainingSet(db.Model):
+    """Зберігає SKU та еталонну кількість для навчання моделі."""
     __bind_key__ = 'analytics'
     id = db.Column(db.Integer, primary_key=True)
-    sku = db.Column(db.String(100), nullable=False, index=True)
+    sku = db.Column(db.String(100), unique=True, nullable=False)
     target_quantity = db.Column(db.Integer, nullable=False)
 
 class TrainedForecastModel(db.Model):
+    """Зберігає інформацію про навчену модель."""
     __bind_key__ = 'analytics'
     id = db.Column(db.Integer, primary_key=True)
+    # --- ПОЧАТОК ЗМІН ---
+    category = db.Column(db.String(255), unique=True, nullable=False) # Додано категорію
     model_path = db.Column(db.String(255), nullable=False)
-    features_list = db.Column(db.Text, nullable=False) # JSON list of feature names in order
-    training_date = db.Column(db.DateTime, default=datetime.now)
+    training_date = db.Column(db.DateTime, default=datetime.utcnow)
+    features_list = db.Column(db.Text) # JSON-список характеристик

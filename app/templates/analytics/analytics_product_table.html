@@ -19,7 +19,7 @@
             {% set product = item.product %}
             <tr class="{{ item.status_class }}" data-sku="{{ product.sku }}" data-name="{{ product.name }}">
                 <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox" form="bulkActionForm"></td>
-                <td>{{ product.sku }}</td>
+                <td><span>{{ product.sku }}</span></td>
                 <td style="max-width: 400px; word-wrap: break-word;">{{ product.name }}</td>
                 <td class="product-price" data-base-price="{{ product.price }}">{{ ("%.2f"|format(product.price)).replace(',', '.') }}</td>
                 <td style="text-align: center;"><b>{{ product.stock }}</b></td>

@@ -10,6 +10,7 @@ import os
 import joblib
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_extraction import DictVectorizer
+from sklearn.preprocessing import StandardScaler
 
 from flask import render_template, current_app, request, jsonify, send_file
 from sqlalchemy import func, or_
@@ -18,19 +19,17 @@ from openpyxl import Workbook
 from . import bp
 from ..models import Product, AnalyticsData, TrainingSet, TrainedForecastModel
 from ..extensions import db
+from ..utils import natural_sort_key
 
 # --- НАЛАШТУВАННЯ АЛГОРИТМУ ПРОГНОЗУВАННЯ ---
 ORDER_CYCLE = 30
 Z_SCORE = 1.65
 MIN_SALES_FOR_TREND = 4
-AGGRESSIVENESS_FACTOR = 1.5 
+AGGRESSIVENESS_FACTOR = 1.2 
 
 
 def _get_features_for_product(product, df_sales, start_date, end_date):
-    """
-    Оновлена функція для генерації вичерпного набору
-    характеристик, що враховують динаміку, тренди та співвідношення.
-    """
+    # ... (код цієї функції залишається без змін) ...
     product_sales = df_sales[(df_sales['sku'] == product.sku) & (df_sales['sale_date'] >= start_date) & (df_sales['sale_date'] <= end_date)]
     
     total_sales_period = product_sales['quantity'].sum()
@@ -49,30 +48,22 @@ def _get_features_for_product(product, df_sales, start_date, end_date):
             y = daily_sales_grouped.values
             sales_trend = np.polyfit(x, y, 1)[0]
 
-    stock_to_sales_ratio = (product.stock / avg_daily_sales) if avg_daily_sales > 0 else float('inf')
-    in_transit_to_sales_ratio = (product.in_transit_quantity / avg_daily_sales) if avg_daily_sales > 0 else float('inf')
-    avg_quantity_per_request = total_sales_period / request_count if request_count > 0 else 0
-    sales_frequency = days_with_sales / num_days_in_period if num_days_in_period > 0 else 0
-
+    stock_to_sales_ratio = (product.stock / avg_daily_sales) if avg_daily_sales > 0 else 999
+    
     params = json.loads(product.xml_data).get('product_params', {}) if product.xml_data else {}
     
     feature_vector = {
-        'stock': product.stock,
-        'in_transit': product.in_transit_quantity,
+        'log_stock': np.log1p(product.stock),
+        'log_in_transit': np.log1p(product.in_transit_quantity),
         'minimum_stock': product.minimum_stock or 0,
         'delivery_time': product.delivery_time,
-        'price': product.price,
-        'total_sales': total_sales_period,
+        'log_price': np.log1p(product.price),
+        'log_total_sales': np.log1p(total_sales_period),
         'request_count': request_count,
-        'avg_price_period': avg_price if not np.isnan(avg_price) else 0,
-        'avg_daily_sales': avg_daily_sales,
         'days_with_sales': days_with_sales,
         'sales_trend': sales_trend if not np.isnan(sales_trend) else 0,
         'stock_to_sales_ratio': stock_to_sales_ratio if stock_to_sales_ratio != float('inf') else 99999,
-        'in_transit_to_sales_ratio': in_transit_to_sales_ratio if in_transit_to_sales_ratio != float('inf') else 99999,
-        'period_duration_days': num_days_in_period,
-        'avg_quantity_per_request': avg_quantity_per_request,
-        'sales_frequency': sales_frequency,
+        'sales_frequency': days_with_sales / num_days_in_period if num_days_in_period > 0 else 0,
     }
     
     for key, value in params.items():
@@ -86,6 +77,7 @@ def _get_features_for_product(product, df_sales, start_date, end_date):
 
 @bp.route('/forecast')
 def forecast_index():
+    # ... (код цієї функції залишається без змін) ...
     try:
         all_categories = sorted({
             d.get('product_category')
@@ -104,6 +96,9 @@ def forecast_index():
         current_app.logger.error(f"Forecast page error: {e}", exc_info=True)
         return render_template("forecast.html", error=str(e), all_categories=[])
 
+def _sanitize_filename(name):
+    return re.sub(r'[^\w-]', '_', name)
+
 @bp.route('/api/forecast/calculate')
 def calculate_forecast_api():
     try:
@@ -119,41 +114,23 @@ def calculate_forecast_api():
         
         category_conditions = [Product.xml_data.like(f'%\"product_category\": \"{cat.replace("\"", "\"\"")}\"%') for cat in search_categories]
         query = Product.query.filter(or_(*category_conditions))
-
-        param_filters, show_param_filters = {}, False
+        
         if len(search_categories) == 1:
             param_query = Product.query.filter(Product.xml_data.like(f'%\"product_category\": \"{search_categories[0].replace("\"", "\"\"")}\"%')).with_entities(Product.xml_data)
             products_xml_in_cat = param_query.all()
             params_for_this_cat = {key for xml_tuple in products_xml_in_cat if xml_tuple[0] for key in (json.loads(xml_tuple[0]).get('product_params') or {})}
             if params_for_this_cat:
-                show_param_filters = True
                 param_name_map = {re.sub(r'[\s/]+', '_', name): name for name in params_for_this_cat}
                 for key, value in request.args.items():
                     if key.startswith('param_') and value:
                         original_name = param_name_map.get(key[len('param_'):])
                         if original_name:
-                            param_filters[original_name] = value
                             query = query.filter(Product.xml_data.like(f'%"{original_name}": "{value}"%'))
         
         all_products_in_scope = query.all()
         final_products_to_order = []
-
-        trained_model_entry = TrainedForecastModel.query.order_by(TrainedForecastModel.training_date.desc()).first()
-        training_set_items = {item.sku: item.target_quantity for item in TrainingSet.query.all()}
-        training_categories = set()
-        if training_set_items:
-            training_products = Product.query.filter(Product.sku.in_(training_set_items.keys())).all()
-            for p in training_products:
-                if p.xml_data:
-                    try: 
-                        cat = json.loads(p.xml_data).get('product_category')
-                        if cat: training_categories.add(cat)
-                    except (json.JSONDecodeError, AttributeError): continue
         
-        model_data_path = trained_model_entry.model_path if trained_model_entry else None
-        model_data = joblib.load(model_data_path) if model_data_path and os.path.exists(model_data_path) else None
-        model = model_data['model'] if model_data else None
-        vectorizer = model_data['vectorizer'] if model_data else None
+        training_set_items = {item.sku: item.target_quantity for item in TrainingSet.query.all()}
 
         sales_history = AnalyticsData.query.with_entities(AnalyticsData.analytics_product_sku, AnalyticsData.analytics_product_quantity, AnalyticsData.analytics_sale_date, AnalyticsData.analytics_product_price_per_unit).all()
         df_sales = pd.DataFrame(sales_history, columns=['sku', 'quantity', 'sale_date', 'price_per_unit'])
@@ -164,47 +141,24 @@ def calculate_forecast_api():
         
         for product in all_products_in_scope:
             xml_data = json.loads(product.xml_data or '{}')
-            product_category = xml_data.get('product_category')
-            use_ml_model = model and vectorizer and product_category in training_categories
+            product_category = xml_data.get('product_category', 'Без категорії')
+            
+            order_quantity = 0
+            is_training_item = product.sku in training_set_items
 
-            product_sales = df_sales[(df_sales['sku'].str.startswith(product.sku, na=False)) & (df_sales['sale_date'] >= start_date) & (df_sales['sale_date'] <= end_date)]
-            sales_in_period = int(product_sales['quantity'].sum())
-            request_count = len(product_sales)
-
-            is_out_of_stock_with_demand = product.stock <= 0 and sales_in_period > 0
-            has_demand_signal = sales_in_period > 0 or (product.minimum_stock is not None and product.minimum_stock > 0)
-
-            if not has_demand_signal and not is_out_of_stock_with_demand:
-                 continue
-
-            # --- ПОЧАТОК ЗМІН: Формування базового словника для товару ---
-            product_dict = {
-                'sku': product.sku, 'name': product.name, 'stock': product.stock,
-                'in_transit': product.in_transit_quantity, 'delivery_time': product.delivery_time,
-                'sales_in_period': sales_in_period, 'request_count': request_count,
-                'category': product_category,
-                'product_url': xml_data.get('product_url', ''),
-                'product_picture': xml_data.get('product_picture', '')
-            }
-            # --- КІНЕЦЬ ЗМІН ---
-
-            if use_ml_model:
-                order_quantity = training_set_items.get(product.sku)
-                if order_quantity is None:
-                    features_dict = _get_features_for_product(product, df_sales, start_date, end_date)
-                    features_vectorized = vectorizer.transform([features_dict])
-                    predicted_quantity = model.predict(features_vectorized)[0]
-                    order_quantity = round(predicted_quantity) if predicted_quantity > 0 else 0
-                
-                if order_quantity > 0 or (is_out_of_stock_with_demand and order_quantity <= 0):
-                    if order_quantity <= 0 and is_out_of_stock_with_demand:
-                        order_quantity = product.minimum_stock or int(sales_in_period) or 1
-                    
-                    product_dict['order_quantity'] = order_quantity
-                    final_products_to_order.append(product_dict)
+            if is_training_item:
+                order_quantity = training_set_items[product.sku]
             else:
-                projected_daily_demand = 0
-                see = 0
+                trained_model_entry = TrainedForecastModel.query.filter_by(category=product_category).first()
+                model_data = None
+                if trained_model_entry and os.path.exists(trained_model_entry.model_path):
+                    model_data = joblib.load(trained_model_entry.model_path)
+                
+                model, vectorizer, scaler = (model_data.get('model'), model_data.get('vectorizer'), model_data.get('scaler')) if model_data else (None, None, None)
+
+                product_sales = df_sales[(df_sales['sku'].str.startswith(product.sku, na=False)) & (df_sales['sale_date'] >= start_date) & (df_sales['sale_date'] <= end_date)]
+                
+                projected_daily_demand, see = 0, 0
                 if not product_sales.empty:
                     daily_sales = product_sales.groupby(product_sales['sale_date'].dt.date)['quantity'].sum().reindex(pd.date_range(start=start_date, end=end_date, freq='D').date, fill_value=0)
                     non_zero_sales = daily_sales[daily_sales > 0]
@@ -214,80 +168,161 @@ def calculate_forecast_api():
                         normal_sales = non_zero_sales[non_zero_sales <= upper_bound]
                     else: normal_sales = non_zero_sales
                     if len(normal_sales) >= MIN_SALES_FOR_TREND:
-                        x_values = np.array([(d - daily_sales.index[0]).days for d in normal_sales.index])
-                        y_values = normal_sales.values
-                        slope, intercept = np.polyfit(x_values, y_values, 1)
+                        x = np.array([(d - daily_sales.index[0]).days for d in normal_sales.index]); y = normal_sales.values
+                        slope, intercept = np.polyfit(x, y, 1)
                         predicted_magnitude = slope * ((end_date - start_date).days) + intercept
                         projected_daily_demand = max(0, predicted_magnitude * (len(normal_sales) / ((end_date - start_date).days + 1)))
-                        see = np.sqrt(np.sum((y_values - (slope * x_values + intercept))**2) / len(x_values)) if len(x_values) > 2 else daily_sales.std()
+                        see = np.sqrt(np.sum((y - (slope * x + intercept))**2) / len(x)) if len(x) > 2 else daily_sales.std(ddof=0)
                     else:
-                        projected_daily_demand = daily_sales.mean()
-                        see = daily_sales.std()
-                
+                        projected_daily_demand = daily_sales.mean(); see = daily_sales.std(ddof=0)
+
                 safety_stock = Z_SCORE * see * np.sqrt(product.delivery_time)
-                demand_during_lead_time = projected_daily_demand * product.delivery_time
-                reorder_point = max(demand_during_lead_time + safety_stock, product.minimum_stock or 0)
-                if (product.stock + product.in_transit_quantity) <= reorder_point:
-                    demand_for_cycle = projected_daily_demand * ORDER_CYCLE * AGGRESSIVENESS_FACTOR
-                    target_inventory_level = demand_for_cycle + demand_during_lead_time + safety_stock
-                    target_inventory_level = max(target_inventory_level, reorder_point)
-                    order_quantity = round(target_inventory_level - (product.stock + product.in_transit_quantity))
-                    if order_quantity > 0:
-                        product_dict['order_quantity'] = order_quantity
-                        final_products_to_order.append(product_dict)
+                reorder_point = max((projected_daily_demand * product.delivery_time) + safety_stock, product.minimum_stock or 0)
+                effective_stock = product.stock + product.in_transit_quantity
+
+                if effective_stock <= reorder_point:
+                    if model and vectorizer and scaler:
+                        features_dict = _get_features_for_product(product, df_sales, start_date, end_date)
+                        features_vectorized = vectorizer.transform([features_dict]); features_scaled = scaler.transform(features_vectorized)
+                        predicted_demand = model.predict(features_scaled)[0]
+                        order_quantity = round(predicted_demand + safety_stock - effective_stock)
+                    else:
+                        demand_for_cycle = projected_daily_demand * ORDER_CYCLE * AGGRESSIVENESS_FACTOR
+                        order_quantity = round((demand_for_cycle + reorder_point) - effective_stock)
+            
+            if order_quantity > 0:
+                final_products_to_order.append({
+                    'sku': product.sku, 'name': product.name, 'stock': product.stock,
+                    'in_transit': product.in_transit_quantity, 'delivery_time': product.delivery_time,
+                    'sales_in_period': int(df_sales[(df_sales['sku'].str.startswith(product.sku, na=False)) & (df_sales['sale_date'] >= start_date) & (df_sales['sale_date'] <= end_date)]['quantity'].sum()), 
+                    'request_count': len(df_sales[(df_sales['sku'].str.startswith(product.sku, na=False)) & (df_sales['sale_date'] >= start_date) & (df_sales['sale_date'] <= end_date)]), 
+                    'category': product_category,
+                    'product_url': xml_data.get('product_url', ''),
+                    'product_picture': xml_data.get('product_picture', ''),
+                    'order_quantity': order_quantity,
+                    'is_training_item': is_training_item # <-- Передаємо прапорець на frontend
+                })
 
         products_by_category = {k: list(v) for k, v in groupby(sorted(final_products_to_order, key=lambda x: x['category']), key=lambda x: x['category'])}
-        return jsonify({'products_by_category': products_by_category, 'show_param_filters': show_param_filters, 'param_filters': param_filters})
+        return jsonify({'products_by_category': products_by_category})
 
     except Exception as e:
         current_app.logger.error(f"Forecast API error: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-
-# Решта файлу без змін...
 @bp.route('/api/forecast/train_model', methods=['POST'])
 def train_model():
-    training_set = TrainingSet.query.all()
-    if len(training_set) < 2:
-        return jsonify({'error': 'Навчальний набір замалий. Будь ласка, додайте принаймні 2 товари для навчання моделі.'}), 400
-    features_list = []
-    targets = []
-    today = datetime.now()
-    start_date = today.replace(year=today.year - 1)
-    end_date = today
+    all_training_items = TrainingSet.query.all()
+    if len(all_training_items) < 5:
+        return jsonify({'error': 'Навчальний набір замалий. Будь ласка, додайте принаймні 5-10 товарів для навчання.'}), 400
+    
+    # Завантажуємо дані про продажі один раз
     sales_history = AnalyticsData.query.with_entities(AnalyticsData.analytics_product_sku, AnalyticsData.analytics_product_quantity, AnalyticsData.analytics_sale_date, AnalyticsData.analytics_product_price_per_unit).all()
     df_sales = pd.DataFrame(sales_history, columns=['sku', 'quantity', 'sale_date', 'price_per_unit'])
     df_sales['sale_date'] = pd.to_datetime(df_sales['sale_date'], errors='coerce')
     df_sales['quantity'] = pd.to_numeric(df_sales['quantity'], errors='coerce').fillna(0)
     df_sales['price_per_unit'] = pd.to_numeric(df_sales['price_per_unit'], errors='coerce').fillna(0)
     df_sales.dropna(subset=['sale_date'], inplace=True)
-    for item in training_set:
-        product = Product.query.filter_by(sku=item.sku).first()
+    
+    # Збагачуємо дані інформацією про категорії
+    training_skus = [item.sku for item in all_training_items]
+    products = Product.query.filter(Product.sku.in_(training_skus)).all()
+    product_map = {p.sku: p for p in products}
+
+    enriched_set = []
+    for item in all_training_items:
+        product = product_map.get(item.sku)
         if not product: continue
-        features_list.append(_get_features_for_product(product, df_sales, start_date, end_date))
-        targets.append(item.target_quantity)
-    if not features_list:
-        return jsonify({'error': 'Не вдалося створити характеристики для навчання.'}), 400
-    vectorizer = DictVectorizer(sparse=False)
-    X = vectorizer.fit_transform(features_list)
-    y = np.array(targets)
-    use_oob = len(training_set) > 10
-    model = RandomForestRegressor(n_estimators=100, random_state=42, oob_score=use_oob, min_samples_leaf=1)
-    model.fit(X, y)
-    upload_folder = os.path.join(current_app.instance_path, 'ml_models')
-    os.makedirs(upload_folder, exist_ok=True)
-    model_path = os.path.join(upload_folder, 'forecast_model.joblib')
-    joblib.dump({'model': model, 'vectorizer': vectorizer}, model_path)
-    TrainedForecastModel.query.delete()
-    db.session.add(TrainedForecastModel(model_path=model_path, features_list=json.dumps(vectorizer.get_feature_names_out().tolist())))
+        category = json.loads(product.xml_data or '{}').get('product_category', 'Без категорії')
+        enriched_set.append({'item': item, 'product': product, 'category': category})
+
+    # Групуємо за категоріями
+    enriched_set.sort(key=lambda x: x['category'])
+    trained_categories = []
+
+    # Навчаємо модель для кожної категорії окремо
+    for category, group_items_iter in groupby(enriched_set, key=lambda x: x['category']):
+        group_items = list(group_items_iter)
+        if len(group_items) < 3: continue # Мінімальний розмір вибірки для однієї категорії
+
+        features_list, targets = [], []
+        today = datetime.now()
+        start_date, end_date = today.replace(year=today.year - 1), today
+
+        for enriched_item in group_items:
+            features_list.append(_get_features_for_product(enriched_item['product'], df_sales, start_date, end_date))
+            targets.append(enriched_item['item'].target_quantity)
+        
+        vectorizer, scaler, model = DictVectorizer(sparse=False), StandardScaler(), RandomForestRegressor(n_estimators=100, random_state=42, oob_score=True)
+        X = vectorizer.fit_transform(features_list)
+        X_scaled = scaler.fit_transform(X)
+        y = np.array(targets)
+        model.fit(X_scaled, y)
+        
+        # Зберігаємо модель для категорії
+        sanitized_category_name = _sanitize_filename(category)
+        upload_folder = os.path.join(current_app.instance_path, 'ml_models')
+        os.makedirs(upload_folder, exist_ok=True)
+        model_path = os.path.join(upload_folder, f'model_{sanitized_category_name}.joblib')
+        joblib.dump({'model': model, 'vectorizer': vectorizer, 'scaler': scaler}, model_path)
+        
+        # Оновлюємо запис в БД для цієї категорії
+        existing_model = TrainedForecastModel.query.filter_by(category=category).first()
+        if existing_model:
+            existing_model.model_path = model_path
+            existing_model.training_date = datetime.utcnow()
+            existing_model.features_list = json.dumps(vectorizer.get_feature_names_out().tolist())
+        else:
+            db.session.add(TrainedForecastModel(category=category, model_path=model_path, features_list=json.dumps(vectorizer.get_feature_names_out().tolist())))
+        
+        trained_categories.append(f"{category} (точність: {model.oob_score_:.2f})")
+
     db.session.commit()
-    oob_message = f' OOB Score: {model.oob_score_:.4f}' if use_oob else ''
-    return jsonify({'message': f'Модель успішно навчена!{oob_message}'})
+    
+    if not trained_categories:
+        return jsonify({'error': 'Не вдалося навчити жодної моделі. Перевірте, чи достатньо даних у кожній категорії.'}), 400
+
+    return jsonify({'message': f'Навчання завершено! Оновлено моделі для категорій: {", ".join(trained_categories)}'})
 
 @bp.route('/forecast/ml_training')
 def forecast_ml_training():
-    training_set = TrainingSet.query.all()
-    return render_template("ml_training.html", training_set=training_set)
+    training_set_items = TrainingSet.query.all()
+    
+    training_skus = [item.sku for item in training_set_items]
+    
+    products = Product.query.filter(Product.sku.in_(training_skus)).all()
+    product_map = {p.sku: p for p in products}
+
+    enriched_training_set = []
+    for item in training_set_items:
+        product = product_map.get(item.sku)
+        category = "Без категорії"
+        name = "Назву не знайдено"
+        if product and product.xml_data:
+            try:
+                xml_data = json.loads(product.xml_data)
+                category = xml_data.get('product_category', "Без категорії")
+                name = product.name
+            except (json.JSONDecodeError, AttributeError):
+                pass
+        
+        enriched_training_set.append({
+            'sku': item.sku,
+            'target_quantity': item.target_quantity,
+            'name': name,
+            'category': category
+        })
+
+    # Сортуємо збагачений список: спочатку за категорією, потім за назвою товару
+    enriched_training_set.sort(key=lambda x: (x['category'], natural_sort_key(x['name'])))
+    
+    # --- ПОЧАТОК ЗМІН: Групуємо дані за категорією ---
+    training_set_grouped = {}
+    for category, group in groupby(enriched_training_set, key=lambda x: x['category']):
+        training_set_grouped[category] = list(group)
+    # --- КІНЕЦЬ ЗМІН ---
+
+    return render_template("ml_training.html", training_set_grouped=training_set_grouped)
 
 @bp.route('/api/forecast/get_product_for_training', methods=['GET'])
 def get_product_for_training():

@@ -153,3 +153,16 @@ class AnalyticsData(db.Model):
     analytics_product_tags = db.Column(db.Text)
 
     raw_data = db.Column(db.Text)
+
+class TrainingSet(db.Model):
+    __bind_key__ = 'analytics'
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(100), nullable=False, index=True)
+    target_quantity = db.Column(db.Integer, nullable=False)
+
+class TrainedForecastModel(db.Model):
+    __bind_key__ = 'analytics'
+    id = db.Column(db.Integer, primary_key=True)
+    model_path = db.Column(db.String(255), nullable=False)
+    features_list = db.Column(db.Text, nullable=False) # JSON list of feature names in order
+    training_date = db.Column(db.DateTime, default=datetime.now)

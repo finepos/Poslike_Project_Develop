@@ -20,8 +20,14 @@
     .checkboxes label:hover { background-color: #f2f2f2; }
     .checkboxes input[type="text"] { width: 100%; margin-bottom: 10px; height: 32px; box-sizing: border-box; }
     .checkboxes label input[type="checkbox"] { width: auto; height: auto; margin: 0 8px 0 0; flex-shrink: 0; padding: 0; }
-    #paramFiltersContainer { margin-top: 15px; }
-    /* Стилі для модального вікна, скопійовані з analytics/index.html */
+    #paramFiltersContainer {
+        margin-top: 15px;
+        padding: 20px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+        display: none;
+    }
     .contact-name-link, .client-phone-link { cursor: pointer; color: #0056b3; text-decoration: underline; }
     .contact-name-link:hover, .client-phone-link:hover { color: #007bff; }
     .details-row > td { background-color: #f8f9fa; padding: 15px !important; }
@@ -31,7 +37,10 @@
 
 <div class="header-controls">
     <h1>Прогноз замовлення товарів</h1>
-    <a href="{{ url_for('main.analytics_index') }}" class="button button-secondary">&larr; Назад до аналітики</a>
+    <div style="display: flex; gap: 10px;">
+        <a href="{{ url_for('main.forecast_ml_training') }}" class="button">Машинне навчання</a>
+        <a href="{{ url_for('main.analytics_index') }}" class="button button-secondary">&larr; Назад до аналітики</a>
+    </div>
 </div>
 
 <div class="filter-form">
@@ -58,7 +67,7 @@
             <a href="{{ url_for('main.forecast_index') }}" class="button button-secondary">Очистити</a>
         </div>
     </div>
-    <div id="paramFiltersContainer" style="padding: 0 20px; display: none;"></div>
+    <div id="paramFiltersContainer"></div>
 </div>
 
 <form id="exportForm" method="POST" action="{{ url_for('main.export_forecast_xls') }}">
@@ -121,6 +130,9 @@
         </div>
     </div>
 </div>
+
+{% include 'components/modals.html' %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -129,7 +141,6 @@
     const paramFiltersContainer = document.getElementById('paramFiltersContainer');
     let expanded = false;
 
-    // --- УНІВЕРСАЛЬНА ФУНКЦІЯ ДЛЯ СПОВІЩЕНЬ ---
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');
         if (!container) return;
@@ -141,44 +152,35 @@
         setTimeout(() => { toast.classList.remove('show'); toast.addEventListener('transitionend', () => toast.remove()); }, 5000);
     }
     
-    // --- ЛОГІКА ДЛЯ ДИНАМІЧНОГО ОНОВЛЕННЯ ---
     async function fetchForecastData(updateFilters = false) {
         const formData = new FormData();
         const selectedCategories = document.querySelectorAll('#categoryList input[type="checkbox"]:checked');
         const categoryNames = Array.from(selectedCategories).map(cb => cb.value);
-
         formData.append('start_date', document.querySelector("#start_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
         formData.append('end_date', document.querySelector("#end_date")._flatpickr.selectedDates[0].toISOString().slice(0,10));
         categoryNames.forEach(name => formData.append('search_category', name));
         document.querySelectorAll('#paramFiltersContainer select').forEach(select => { 
             if (select.value) formData.append(select.name, select.value); 
         });
-
         if (updateFilters) {
             await updateParamFilters(categoryNames);
         }
-        
         if (categoryNames.length === 0) {
             resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px; font-size: 1.2em;">Будь ласка, оберіть одну або декілька категорій для розрахунку прогнозу.</p>';
             paramFiltersContainer.style.display = 'none';
             return;
         }
-        
         const queryParams = new URLSearchParams(formData).toString();
         resultsContainer.innerHTML = '<p style="text-align: center; margin-top: 30px;">Розрахунок прогнозу, зачекайте...</p>';
-
         try {
             const response = await fetch(`{{ url_for('main.calculate_forecast_api') }}?${queryParams}`);
             const data = await response.json();
-            
             if (data.show_param_filters) {
                 paramFiltersContainer.style.display = 'block';
-            } else {
-                paramFiltersContainer.style.display = 'none';
+            } else if (!data.products_by_category || Object.keys(data.products_by_category).length === 0) {
+                 paramFiltersContainer.style.display = 'none';
             }
-            
             renderForecastResults(data.products_by_category);
-            
         } catch (error) {
             resultsContainer.innerHTML = `<div class="flash danger">Помилка завантаження даних: ${error}</div>`;
         }
@@ -191,23 +193,31 @@
             document.getElementById('exportBtn').style.display = 'none';
             return;
         }
-
         let tableHtml = '';
         for (const category in productsByCategory) {
             const products = productsByCategory[category];
             tableHtml += `<h2 class="category-header">${category}</h2><table id="forecast-table-${category.replace(/\s+/g, '-')}" class="forecast-table"><thead><tr>
                         <th style="width: 2%; text-align: center;"><input type="checkbox" class="select-all-cat-checkbox"></th>
                         <th style="width: 12%;">SKU</th><th>Назва товару</th>
-                        <th style="width: 8%; text-align: center;">Залишок</th><th style="width: 8%; text-align: center;">В дорозі</th>
-                        <th style="width: 10%; text-align: center;">Продано</th><th style="width: 10%; text-align: center;">Термін дост.</th>
-                        <th style="width: 10%; text-align: center;">К-ть заявок</th>
-                        <th style="width: 12%; text-align: center; background-color: #d4edda;">К-ть до замовлення</th></tr></thead><tbody>`;
-            
+                        <th style="width: 6%; text-align: center;">Залишок</th><th style="width: 6%; text-align: center;">В дорозі</th>
+                        <th style="width: 6%; text-align: center;">Продано</th><th style="width: 6%; text-align: center;">Термін дост.</th>
+                        <th style="width: 6%; text-align: center;">К-ть заявок</th>
+                        <th style="width: 10%; text-align: center; background-color: #d4edda;">К-ть до замовлення</th>
+                        <th style="width: 10%; text-align: center;">Дії</th>
+                        </tr></thead><tbody>`;
             products.forEach(p => {
-                // ▼▼▼ ЗМІНЕНО ГЕНЕРАЦІЮ КОМІРКИ "К-ть заявок" ▼▼▼
                 const requestCountCell = p.request_count > 0 
                     ? `<a href="#" class="request-count-link" data-sku="${p.sku}" style="text-decoration: underline; color: #007bff; font-weight: bold;">${p.request_count}</a>`
                     : '0';
+                
+                let actionsHtml = `<div style="display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;">`;
+                if (p.product_url) {
+                    actionsHtml += `<a href="${p.product_url}" target="_blank" class="button" style="padding: 5px 10px; background-color: #17a2b8;" title="Відкрити на сайті">Сайт</a>`;
+                }
+                if (p.product_picture) {
+                    actionsHtml += `<button type="button" class="button" style="padding: 5px 10px; background-color: #28a745;" onclick="showProductImage('${p.product_picture}')" title="Показати фото">Фото</button>`;
+                }
+                actionsHtml += `</div>`;
 
                 tableHtml += `<tr data-sku="${p.sku}" data-name="${p.name}" data-order-quantity="${p.order_quantity}">
                     <td style="text-align: center;"><input type="checkbox" class="forecast-product-checkbox"></td>
@@ -215,8 +225,8 @@
                     <td style="text-align: center;">${p.stock}</td><td style="text-align: center;">${p.in_transit}</td>
                     <td style="text-align: center;">${p.sales_in_period}</td><td style="text-align: center;">${p.delivery_time}</td>
                     <td style="text-align: center;">${requestCountCell}</td>
-                    <td style="text-align: center; font-weight: bold; background-color: #d4edda;">${p.order_quantity}</td></tr>`;
-                // ▲▲▲ КІНЕЦЬ ЗМІН ▲▲▲
+                    <td style="text-align: center; font-weight: bold; background-color: #d4edda;">${p.order_quantity}</td>
+                    <td>${actionsHtml}</td></tr>`;
             });
             tableHtml += '</tbody></table>';
         }
@@ -224,7 +234,6 @@
         document.getElementById('exportBtn').style.display = 'inline-block';
     }
 
-    // --- ЛОГІКА ДЛЯ ФІЛЬТРІВ (КАТЕГОРІЇ + ПАРАМЕТРИ) ---
     function toggleCategoryCheckboxes() { expanded = !expanded; document.getElementById("categoryCheckboxes").style.display = expanded ? "block" : "none"; }
     function filterCategories() {const t=document.getElementById("categorySearchInput").value.toLowerCase(),e=document.getElementById("categoryList");for(let o=0;o<e.getElementsByTagName("label").length;o++){const n=e.getElementsByTagName("label")[o];(n.textContent||n.innerText).toLowerCase().indexOf(t)>-1?n.style.display="":n.style.display="none"}}
     function updateCategorySelectText() {
@@ -254,59 +263,54 @@
             paramFiltersContainer.innerHTML = '';
             return;
         }
-        
         const queryParams = new URLSearchParams(categoryNames.map(name => ['category', name]));
-
         try {
             const response = await fetch(`{{ url_for('main.get_params_for_category') }}?${queryParams.toString()}`);
             const paramsData = await response.json();
-            
             if (Object.keys(paramsData).length > 0) {
-                let filterRowHtml = '<div style="display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 15px; margin-top:15px; padding: 20px; border: 1px solid #ccc; border-radius: 5px; background-color: #fff;">';
-                filterRowHtml += '<h4 style="width: 100%; text-align: center; margin:0 0 10px 0;">Фільтри по параметрах</h4>';
+                let filterContentHtml = '<h4 style="width: 100%; text-align: center; margin:0 0 10px 0;">Фільтри по параметрах</h4>';
+                filterContentHtml += '<div style="display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 15px;">';
                 const sortedParamNames = Object.keys(paramsData).sort();
                 for (const paramName of sortedParamNames) {
                     const values = paramsData[paramName];
                     const selectName = `param_${paramName.replace(/[\s/]+/g, '_')}`;
                     let optionsHTML = values.map(v => `<option value="${v}">${v}</option>`).join('');
-                    filterRowHtml += `<div class="input-group" style="flex: 1 1 180px;"><label>${paramName}</label><select name="${selectName}" onchange="fetchForecastData()"><option value="">Всі</option>${optionsHTML}</select></div>`;
+                    filterContentHtml += `<div class="input-group" style="flex: 1 1 180px;"><label>${paramName}</label><select name="${selectName}" onchange="fetchForecastData()"><option value="">Всі</option>${optionsHTML}</select></div>`;
                 }
-                filterRowHtml += '</div>';
-                paramFiltersContainer.innerHTML = filterRowHtml;
+                filterContentHtml += '</div>';
+                paramFiltersContainer.innerHTML = filterContentHtml;
                 paramFiltersContainer.style.display = 'block';
             } else {
                 paramFiltersContainer.style.display = 'none';
                 paramFiltersContainer.innerHTML = '';
             }
-        } catch (error) { console.error("Помилка завантаження фільтрів по параметрах:", error); }
+        } catch (error) { 
+            console.error("Помилка завантаження фільтрів по параметрах:", error); 
+            paramFiltersContainer.style.display = 'none';
+            paramFiltersContainer.innerHTML = '';
+        }
     }
     
-    // --- ПРИВ'ЯЗКА ОБРОБНИКІВ ПОДІЙ ---
     document.addEventListener('DOMContentLoaded', () => {
         const flatpickrConfig = {
             locale: "uk",
             dateFormat: "Y-m-d",
             altInput: true,
             altFormat: "d.m.Y",
-            onChange: function(selectedDates, dateStr, instance) {
-                fetchForecastData(true);
-            }
         };
         flatpickr("#start_date", { ...flatpickrConfig, defaultDate: "{{ start_date }}" });
         flatpickr("#end_date",   { ...flatpickrConfig, defaultDate: "{{ end_date }}" });
-
         updateCategorySelectText();
-
         document.querySelectorAll('#categoryList input[type="checkbox"]').forEach(cb => {
             cb.addEventListener('change', () => {
                 updateCategorySelectText();
                 fetchForecastData(true);
-                toggleCategoryCheckboxes();
+                if (expanded) {
+                    toggleCategoryCheckboxes();
+                }
             });
         });
-        
-        document.getElementById('calculateBtn').addEventListener('click', () => fetchForecastData(true));
-
+        document.getElementById('calculateBtn').addEventListener('click', () => fetchForecastData());
         resultsContainer.addEventListener('change', (event) => {
             if (event.target.classList.contains('select-all-cat-checkbox')) {
                 const table = event.target.closest('table');
@@ -316,7 +320,6 @@
                 });
             }
         });
-
         const exportForm = document.getElementById('exportForm');
         if (exportForm) {
             exportForm.addEventListener('submit', (event) => {
@@ -326,7 +329,6 @@
                     showToast('Будь ласка, оберіть хоча б один товар для експорту.', 'error');
                     return;
                 }
-                
                 const selectedProductsData = [];
                 selectedCheckboxes.forEach(cb => {
                     const row = cb.closest('tr');
@@ -336,31 +338,16 @@
                         order_quantity: row.dataset.orderQuantity
                     });
                 });
-                
                 document.getElementById('selectedProductsInput').value = JSON.stringify(selectedProductsData);
             });
         }
-
         if (document.querySelectorAll('#categoryList input[type="checkbox"]:checked').length > 0) {
             fetchForecastData(true);
         }
 
-        const applicationsModal = document.getElementById('applicationsModal');
-        const clientApplicationsModal = document.getElementById('clientApplicationsModal');
-    
-        function closeApplicationsModal() { if (applicationsModal) applicationsModal.style.display = 'none'; }
-        function closeClientApplicationsModal() { if (clientApplicationsModal) clientApplicationsModal.style.display = 'none'; }
-        
-        const closeApplicationsModalBtn = document.getElementById('closeApplicationsModalBtnForecast');
-        if (closeApplicationsModalBtn) {
-            closeApplicationsModalBtn.addEventListener('click', closeApplicationsModal);
-        }
-    
-        if (applicationsModal) applicationsModal.addEventListener('click', e => { if (e.target === applicationsModal) closeApplicationsModal(); });
-        if (clientApplicationsModal) clientApplicationsModal.addEventListener('click', e => { if (e.target === clientApplicationsModal) closeClientApplicationsModal(); });
-    
         resultsContainer.addEventListener('click', async function(event) {
             const target = event.target;
+            
             if (target.classList.contains('request-count-link')) {
                 event.preventDefault();
                 const sku = target.dataset.sku;
@@ -384,18 +371,12 @@
                     } else {
                         tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Для цього товару немає заявок.</td></tr>`;
                     }
-                    if (applicationsModal) applicationsModal.style.display = 'flex';
+                    document.getElementById('applicationsModal').style.display = 'flex';
                 } catch (error) {
                     showToast(error.message || 'Не вдалося завантажити дані.', 'error');
                 }
             }
         });
-        
-        const appsTableBody = document.getElementById('applicationsTableBody');
-        if (appsTableBody) {
-             appsTableBody.addEventListener('click', async function(event) {
-             });
-        }
     });
 </script>
 {% endblock %}

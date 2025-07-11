@@ -1,0 +1,191 @@
+{% extends "layout.html" %}
+{% block title %}Машинне навчання для прогнозу{% endblock %}
+
+{% block content %}
+<style>
+    .training-container { max-width: 1200px; margin: auto; }
+    .input-section { padding: 20px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 20px; }
+    .training-table-wrapper { margin-top: 20px; }
+    #trainingTable td, #trainingTable th { text-align: center; vertical-align: middle; }
+    .action-cell button { background: none; border: none; color: red; cursor: pointer; font-size: 1.5em; padding: 0 10px; }
+</style>
+
+<div class="training-container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h1>Навчання моделі прогнозування</h1>
+        <a href="{{ url_for('main.forecast_index') }}" class="button button-secondary">&larr; Назад до прогнозу</a>
+    </div>
+
+    <div class="input-section">
+        <h3>Додати товар до навчального набору</h3>
+        <div style="display: flex; gap: 15px; align-items: flex-end;">
+            <div style="flex-grow: 1;">
+                <label for="sku_input">Введіть SKU товару</label>
+                <input type="text" id="sku_input" placeholder="Точне співпадіння...">
+            </div>
+            <button id="addProductBtn" class="button">Додати</button>
+        </div>
+    </div>
+
+    <div class="training-table-wrapper">
+        <h3>Навчальний набір</h3>
+        <p>Для цих товарів буде встановлено еталонну кількість для замовлення. Модель навчиться на їхніх характеристиках, щоб прогнозувати кількість для інших товарів.</p>
+        <table id="trainingTable">
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Назва товару</th>
+                    <th>Кількість для замовлення (еталон)</th>
+                    <th style="width: 5%;">Дії</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in training_set %}
+                <tr data-sku="{{ item.sku }}">
+                    <td>{{ item.sku }}</td>
+                    <td class="name-cell" style="text-align: left;">...завантаження...</td>
+                    <td><input type="number" class="target-quantity-input" value="{{ item.target_quantity }}" min="0" style="width: 150px; text-align: center; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"></td>
+                    <td class="action-cell"><button class="remove-row-btn">&times;</button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px; display: flex; gap: 20px; justify-content: center;">
+        <button id="saveAndTrainBtn" class="button" style="padding: 15px 30px; font-size: 1.2em; display: none;">Зберегти набір та навчити модель</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const skuInput = document.getElementById('sku_input');
+    const addProductBtn = document.getElementById('addProductBtn');
+    const trainingTableBody = document.querySelector('#trainingTable tbody');
+    const saveAndTrainBtn = document.getElementById('saveAndTrainBtn');
+
+    function checkTableState() {
+        const rowCount = trainingTableBody.querySelectorAll('tr').length;
+        saveAndTrainBtn.style.display = rowCount > 0 ? 'inline-block' : 'none';
+    }
+
+    async function addRowToTable(sku) {
+        if (trainingTableBody.querySelector(`tr[data-sku="${sku}"]`)) {
+            showToast('Цей товар вже є у наборі.', 'error');
+            return;
+        }
+        addProductBtn.disabled = true;
+        try {
+            const response = await fetch(`/api/forecast/get_product_for_training?sku=${sku}`);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Помилка сервера');
+            }
+            const product = await response.json();
+            const newRow = document.createElement('tr');
+            newRow.dataset.sku = product.sku;
+            newRow.innerHTML = `
+                <td>${product.sku}</td>
+                <td style="text-align: left;">${product.name}</td>
+                <td><input type="number" class="target-quantity-input" value="1" min="0" style="width: 150px; text-align: center; padding: 8px; border-radius: 4px; border: 1px solid #ccc;"></td>
+                <td class="action-cell"><button class="remove-row-btn">&times;</button></td>
+            `;
+            trainingTableBody.appendChild(newRow);
+            skuInput.value = '';
+            checkTableState();
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            addProductBtn.disabled = false;
+        }
+    }
+
+    function fetchNamesForExistingRows() {
+        trainingTableBody.querySelectorAll('tr').forEach(async (row) => {
+            const sku = row.dataset.sku;
+            const nameCell = row.querySelector('.name-cell');
+            try {
+                const response = await fetch(`/api/forecast/get_product_for_training?sku=${sku}`);
+                if (!response.ok) return;
+                const product = await response.json();
+                nameCell.textContent = product.name;
+            } catch (e) {
+                nameCell.textContent = 'Не вдалося завантажити назву';
+                nameCell.style.color = 'red';
+            }
+        });
+    }
+
+    addProductBtn.addEventListener('click', () => {
+        const sku = skuInput.value.trim();
+        if (sku) addRowToTable(sku);
+    });
+    skuInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addProductBtn.click();
+        }
+    });
+    trainingTableBody.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-row-btn')) {
+            e.target.closest('tr').remove();
+            checkTableState();
+        }
+    });
+
+    saveAndTrainBtn.addEventListener('click', async () => {
+        const rows = trainingTableBody.querySelectorAll('tr');
+        const trainingData = [];
+        let hasInvalidData = false;
+        rows.forEach(row => {
+            const sku = row.dataset.sku;
+            const quantityInput = row.querySelector('.target-quantity-input');
+            const quantity = parseInt(quantityInput.value, 10);
+            
+            // --- ПОЧАТОК ЗМІН ---
+            // Дозволяємо 0, але не дозволяємо від'ємні числа або порожнє поле
+            if (isNaN(quantity) || quantity < 0) { 
+                quantityInput.style.border = '2px solid red';
+                hasInvalidData = true;
+            } else {
+                quantityInput.style.border = '1px solid #ccc';
+                trainingData.push({ sku, quantity });
+            }
+        });
+        if (hasInvalidData) {
+            // Оновлюємо текст помилки
+            showToast('Будь ласка, введіть коректну кількість (0 або більше).', 'error');
+            return;
+        }
+        // --- КІНЕЦЬ ЗМІН ---
+
+        saveAndTrainBtn.disabled = true;
+        saveAndTrainBtn.textContent = 'Зберігаємо та навчаємо...';
+        try {
+            const saveResponse = await fetch('/api/forecast/save_training_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ training_data: trainingData })
+            });
+            const saveData = await saveResponse.json();
+            if (!saveResponse.ok) throw new Error(saveData.error || 'Помилка збереження');
+            showToast(saveData.message, 'success');
+            const trainResponse = await fetch('/api/forecast/train_model', { method: 'POST' });
+            const trainData = await trainResponse.json();
+            if (!trainResponse.ok) throw new Error(trainData.error || 'Помилка навчання');
+            showToast(trainData.message, 'success');
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            saveAndTrainBtn.disabled = false;
+            saveAndTrainBtn.textContent = 'Зберегти набір та навчити модель';
+        }
+    });
+
+    fetchNamesForExistingRows();
+    checkTableState();
+});
+</script>
+{% endblock %}

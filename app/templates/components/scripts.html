@@ -267,14 +267,14 @@
         
         function toggleBulkActions() {
             const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
-            bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
+            if(bulkActionsContainer) bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
         }
 
-        selectAllCheckbox.addEventListener('change', (e) => { productCheckboxes.forEach(cb => cb.checked = e.target.checked); toggleBulkActions(); });
+        if(selectAllCheckbox) selectAllCheckbox.addEventListener('change', (e) => { productCheckboxes.forEach(cb => cb.checked = e.target.checked); toggleBulkActions(); });
         productCheckboxes.forEach(cb => cb.addEventListener('change', toggleBulkActions));
-        bulkActionSelect.addEventListener('change', () => { bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText; });
+        if(bulkActionSelect) bulkActionSelect.addEventListener('change', () => { bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText; });
         
-        bulkActionForm.addEventListener('submit', (e) => {
+        if(bulkActionForm) bulkActionForm.addEventListener('submit', (e) => {
             const selectedAction = bulkActionSelect.value;
             const displayCurrencyInput = document.getElementById('displayCurrencyInput');
             if (displayCurrencyInput) { displayCurrencyInput.value = document.getElementById('currencySelector').value; }
@@ -343,6 +343,11 @@
             cb.addEventListener('change', () => {
                 updateCategorySelectText();
                 checkAndLoadDynamicFilters();
+                // --- ПОЧАТОК ЗМІН ---
+                if (expanded) {
+                    toggleCategoryCheckboxes();
+                }
+                // --- КІНЕЦЬ ЗМІН ---
                 document.getElementById('mainSearchForm').submit();
             });
         });
@@ -350,7 +355,6 @@
         checkAndLoadDynamicFilters();
     });
 
-    // ▼▼▼ ПОЧАТОК ЗМІН В ЦЬОМУ БЛОЦІ ▼▼▼
     document.addEventListener('DOMContentLoaded', function() {
         const currencySelector = document.getElementById('currencySelector');
         if (currencySelector) {
@@ -366,7 +370,6 @@
                         const basePriceUAH = parseFloat(priceCell.dataset.basePrice);
                         if (!isNaN(basePriceUAH) && selectedRate > 0) {
                             const newPrice = basePriceUAH / selectedRate;
-                            // ЗАМІНЕНО .replace(',', '.') НА .toFixed(2)
                             priceCell.textContent = newPrice.toFixed(2);
                         }
                     });
@@ -393,5 +396,4 @@
             }
         }
     });
-    // ▲▲▲ КІНЕЦЬ ЗМІН ▲▲▲
 </script>

@@ -185,6 +185,24 @@
             resultsContainer.innerHTML = `<div class="flash danger">Помилка завантаження даних: ${error}</div>`;
         }
     }
+    
+    // --- ПОЧАТОК ЗМІН: ДОДАНО ФУНКЦІЇ ДЛЯ МОДАЛЬНОГО ВІКНА ---
+    function showProductImage(src) {
+        const imageModalOverlay = document.getElementById('imageModalOverlay');
+        const imageModalContent = document.getElementById('imageModalContent');
+        if (src && imageModalOverlay && imageModalContent) {
+            imageModalContent.src = src;
+            imageModalOverlay.style.display = 'flex';
+        }
+    }
+
+    function closeImageModal() {
+        const imageModalOverlay = document.getElementById('imageModalOverlay');
+        if (imageModalOverlay) {
+            imageModalOverlay.style.display = 'none';
+        }
+    }
+    // --- КІНЕЦЬ ЗМІН ---
 
     function renderForecastResults(productsByCategory) {
         resultsContainer.innerHTML = '';
@@ -214,6 +232,7 @@
                 if (p.product_url) {
                     actionsHtml += `<a href="${p.product_url}" target="_blank" class="button" style="padding: 5px 10px; background-color: #17a2b8;" title="Відкрити на сайті">Сайт</a>`;
                 }
+                // V-- Ось ця умова перевіряє наявність фото --V
                 if (p.product_picture) {
                     actionsHtml += `<button type="button" class="button" style="padding: 5px 10px; background-color: #28a745;" onclick="showProductImage('${p.product_picture}')" title="Показати фото">Фото</button>`;
                 }

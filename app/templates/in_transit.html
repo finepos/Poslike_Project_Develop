@@ -4,12 +4,15 @@
 {% block content %}
 <h1>Накладні "В дорозі"</h1>
 
-<div style="margin: 20px 0;">
+<div style="margin: 20px 0; display: flex; justify-content: space-between; align-items: center;">
     <form method="GET" action="{{ url_for('main.in_transit_view') }}" style="display: flex; gap: 10px;">
         <input type="search" name="search" placeholder="Пошук по номеру або коментарю..." value="{{ search_term or '' }}" style="width: 300px;">
         <button type="submit" class="button">Шукати</button>
         <a href="{{ url_for('main.in_transit_view') }}" class="button button-secondary">Очистити</a>
     </form>
+    <div>
+        <a href="{{ url_for('main.in_transit_new') }}" class="button">Створити накладну</a>
+    </div>
 </div>
 
 {% if invoices %}

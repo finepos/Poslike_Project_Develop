@@ -1,0 +1,377 @@
+{% extends "layout.html" %}
+{% block title %}Нова накладна в дорозі{% endblock %}
+
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/live-search.css') }}">
+{% endblock %}
+
+{% block content %}
+<style>
+    .invoice-form-container {
+        max-width: 1920px;
+        margin: 30px auto;
+        padding: 30px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+    }
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #495057;
+    }
+    .search-section {
+        border-top: 1px solid #e9ecef;
+        padding-top: 25px;
+        margin-top: 25px;
+    }
+    .search-grid {
+        display: grid;
+        grid-template-columns: 3fr 2fr;
+        gap: 20px;
+        align-items: flex-start;
+    }
+    .sku-search-group {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+    }
+    .sku-search-group .form-group {
+        flex-grow: 1;
+    }
+    .live-search-container {
+        position: relative;
+    }
+    .live-search-results {
+        position: absolute;
+        width: 100%;
+        background-color: #fff;
+        border: 1px solid #ced4da;
+        border-top: none;
+        border-radius: 0 0 5px 5px;
+        z-index: 1001;
+        max-height: 300px;
+        overflow-y: auto;
+        box-shadow: 0 5px 10px rgba(0,0,0,0.1);
+    }
+    .search-result-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f1f1;
+    }
+    .search-result-item:last-child {
+        border-bottom: none;
+    }
+    .search-result-item:hover {
+        background-color: #007bff;
+        color: white;
+    }
+    .search-result-item:hover .result-sku {
+        color: white;
+    }
+    .result-name {
+        font-weight: 500;
+    }
+    .result-sku {
+        color: #6c757d;
+        font-size: 0.9em;
+        margin-left: 15px;
+    }
+    .added-products-table {
+        margin-top: 20px;
+    }
+    .added-products-table input {
+        width: 100px;
+    }
+    .invoice-actions {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 30px;
+    }
+</style>
+
+<div class="invoice-form-container">
+    <h1>Нова накладна "В дорозі"</h1>
+
+    <form id="newInvoiceForm" onsubmit="submitNewInvoice(event)">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="invoice_date">Дата накладної</label>
+                <input type="date" id="invoice_date" required>
+            </div>
+            <div class="form-group">
+                <label for="invoice_number">Номер накладної</label>
+                <input type="text" id="invoice_number" placeholder="(необов'язково)">
+            </div>
+            <div class="form-group">
+                <label for="invoice_currency">Валюта</label>
+                <select id="invoice_currency" required>
+                    <option value="">Оберіть...</option>
+                    {% if available_currencies %}
+                        {% for currency in available_currencies %}
+                        <option value="{{ currency.code }}">{{ currency.code }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+
+        <div class="search-grid">
+            <div class="form-group live-search-container">
+                <label for="name_search">Пошук за назвою</label>
+                <input type="text" id="name_search" placeholder="Почніть вводити назву товару..." autocomplete="off">
+                <div id="liveSearchResults" class="live-search-results" style="display: none;"></div>
+            </div>
+            <div class="sku-search-group">
+                <div class="form-group">
+                    <label for="sku_search">Пошук по SKU</label>
+                    <input type="text" id="sku_search" placeholder="Введіть точний SKU...">
+                </div>
+                <button type="button" class="button" onclick="findProductBySku()" style="align-self: center;">Знайти</button>
+            </div>
+        </div>
+    </form>
+
+    <h3 style="margin-top: 30px;">Товари в накладній</h3>
+    <table id="addedProductsTable" class="added-products-table">
+        <thead>
+            <tr>
+                <th>SKU</th>
+                <th>Назва товару</th>
+                <th style="width: 150px;">Собівартість</th>
+                <th style="width: 120px;">Кількість</th>
+                <th style="width: 120px; text-align: center;">Дії</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div class="invoice-actions">
+        <a href="{{ url_for('main.in_transit_view') }}" class="button button-secondary">Скасувати</a>
+        <button type="submit" class="button" form="newInvoiceForm">Створити накладну</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('invoice_date').valueAsDate = new Date();
+    const addedProductsTableBody = document.querySelector('#addedProductsTable tbody');
+    const nameSearchInput = document.getElementById('name_search');
+    const skuSearchInput = document.getElementById('sku_search');
+    const searchResultsContainer = document.getElementById('liveSearchResults');
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => { toast.classList.add('show'); }, 100);
+        setTimeout(() => { toast.classList.remove('show'); toast.addEventListener('transitionend', () => toast.remove()); }, 5000);
+    }
+    
+    const imageModalOverlay = document.getElementById('imageModalOverlay');
+
+    function showProductImage(src) {
+        if(src && imageModalOverlay) { 
+            const imageContent = document.getElementById('imageModalContent');
+            if (imageContent) {
+                imageContent.src = src; 
+                imageModalOverlay.style.display = 'flex'; 
+            }
+        } else if (!src) {
+            showToast('Для цього товару немає фото.', 'warning');
+        }
+    }
+
+    function closeImageModal() { 
+        if (imageModalOverlay) imageModalOverlay.style.display = 'none'; 
+    }
+    
+    if (imageModalOverlay) {
+        imageModalOverlay.addEventListener('click', e => {
+            if (e.target === imageModalOverlay) closeImageModal();
+        });
+    }
+
+    function addProductToTable(product) {
+        if (document.querySelector(`tr[data-sku="${product.sku}"]`)) {
+            showToast('Цей товар вже додано до накладної.', 'warning');
+            return;
+        }
+
+        const photoButtonHtml = product.product_picture 
+            ? `<button type="button" class="button" style="padding: 5px 10px; background-color: #28a745;" onclick="showProductImage('${product.product_picture}')">Фото</button>` 
+            : '';
+
+        const newRow = `
+            <tr data-id="${product.id}" data-sku="${product.sku}">
+                <td>${product.sku}</td>
+                <td>${product.name}</td>
+                <td><input type="number" class="cost-price-input" value="${(product.vendor_price || 0).toFixed(2)}" step="0.01" min="0" required></td>
+                <td><input type="number" class="quantity-input" value="1" min="1" required></td>
+                <td style="display:flex; gap: 5px; justify-content: center;">
+                    ${photoButtonHtml}
+                    <button type="button" class="button-danger" onclick="this.closest('tr').remove()">X</button>
+                </td>
+            </tr>`;
+        addedProductsTableBody.insertAdjacentHTML('beforeend', newRow);
+    }
+
+    let searchTimeout;
+    nameSearchInput.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        const query = nameSearchInput.value.trim();
+        
+        const currencySelect = document.getElementById('invoice_currency');
+        if (!currencySelect.value) {
+            searchResultsContainer.style.display = 'none';
+            return;
+        }
+
+        if (query.length < 2) {
+            searchResultsContainer.style.display = 'none';
+            return;
+        }
+
+        searchTimeout = setTimeout(async () => {
+            try {
+                const response = await fetch(`/api/product-live-search?q=${query}`);
+                const products = await response.json();
+                
+                searchResultsContainer.innerHTML = '';
+                if (products.length > 0) {
+                    products.forEach(product => {
+                        const item = document.createElement('div');
+                        item.classList.add('search-result-item');
+                        item.innerHTML = `
+                            <span class="result-name">${product.name}</span>
+                            <span class="result-sku">SKU: ${product.sku}</span>
+                        `;
+                        item.addEventListener('click', () => {
+                            addProductToTable(product);
+                            nameSearchInput.value = '';
+                            searchResultsContainer.style.display = 'none';
+                        });
+                        searchResultsContainer.appendChild(item);
+                    });
+                    searchResultsContainer.style.display = 'block';
+                } else {
+                    searchResultsContainer.style.display = 'none';
+                }
+            } catch (error) { console.error("Search error:", error); }
+        }, 300);
+    });
+
+    [nameSearchInput, skuSearchInput].forEach(input => {
+        input.addEventListener('focus', () => {
+            const currencySelect = document.getElementById('invoice_currency');
+            if (!currencySelect.value) {
+                showToast('Будь ласка, спочатку оберіть валюту.', 'error');
+                currencySelect.focus();
+            }
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!searchResultsContainer.contains(e.target) && e.target !== nameSearchInput) {
+            searchResultsContainer.style.display = 'none';
+        }
+    });
+    
+    async function findProductBySku() {
+        const currencySelect = document.getElementById('invoice_currency');
+        if (!currencySelect.value) {
+            showToast('Будь ласка, спочатку оберіть валюту.', 'error');
+            currencySelect.focus();
+            return;
+        }
+        
+        const sku = skuSearchInput.value.trim();
+        if (!sku) return;
+
+        try {
+            const response = await fetch(`/api/product-search?sku=${sku}`);
+            const data = await response.json();
+
+            if (response.ok) {
+                addProductToTable(data);
+                skuSearchInput.value = '';
+            } else {
+                showToast(data.error || 'Товар не знайдено', 'error');
+            }
+        } catch (error) {
+            showToast('Помилка мережі.', 'error');
+        }
+    }
+    
+    skuSearchInput.addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            findProductBySku();
+        }
+    });
+
+    async function submitNewInvoice(event) {
+        event.preventDefault();
+        
+        const currencySelect = document.getElementById('invoice_currency');
+        if (!currencySelect.value) {
+            showToast('Будь ласка, оберіть валюту для накладної.', 'error');
+            currencySelect.focus();
+            return;
+        }
+
+        const products = [];
+        document.querySelectorAll('#addedProductsTable tbody tr').forEach(row => {
+            products.push({
+                id: row.dataset.id,
+                quantity: row.querySelector('.quantity-input').value,
+                cost_price: row.querySelector('.cost-price-input').value
+            });
+        });
+
+        if (products.length === 0) {
+            showToast('Додайте хоча б один товар до накладної.', 'error');
+            return;
+        }
+
+        const payload = {
+            products: products,
+            invoice_date: document.getElementById('invoice_date').value,
+            invoice_number: document.getElementById('invoice_number').value,
+            currency_code: currencySelect.value
+        };
+
+        try {
+            const response = await fetch("{{ url_for('main.create_in_transit_invoice') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                showToast(result.message || 'Накладну успішно створено!', 'success');
+                window.location.href = "{{ url_for('main.in_transit_view') }}";
+            } else {
+                showToast(result.message || 'Сталася помилка', 'error');
+            }
+        } catch (error) {
+            showToast('Помилка мережі при створенні накладної.', 'error');
+        }
+    }
+</script>
+{% endblock %}

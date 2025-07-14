@@ -1,0 +1,50 @@
+.live-search-container {
+    position: relative;
+}
+
+.live-search-results {
+    /* ПОЧАТОК ЗМІН: Позиціонування та візуальні покращення */
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 0 0 5px 5px;
+    z-index: 1000;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    /* КІНЕЦЬ ЗМІН */
+}
+
+.search-result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background-color: #f0f0f0;
+}
+
+.search-result-item .result-name {
+    font-weight: 500;
+    color: #333;
+    flex-grow: 1;
+    padding-right: 15px;
+}
+
+.search-result-item .result-sku {
+    color: #555;
+    font-size: 0.9em;
+    white-space: nowrap;
+    flex-shrink: 0;
+}

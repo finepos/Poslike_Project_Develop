@@ -10,44 +10,20 @@ else:
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        print("Підключено до бази даних stock_control.db.")
+        print("Підключено до stock_control.db.")
 
-        # --- Крок 1: Видаляємо стару версію таблиці, оскільки її структура змінилася ---
-        print("Видалення старої таблиці 'in_transit_order' (якщо існує)...")
-        cursor.execute("DROP TABLE IF EXISTS in_transit_order")
-        
-        # --- Крок 2: Створюємо нову таблицю 'in_transit_invoice' (якщо не існує) ---
-        print("Створення таблиці 'in_transit_invoice'...")
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS in_transit_invoice (
-            id INTEGER NOT NULL,
-            invoice_number VARCHAR(100),
-            invoice_date DATE NOT NULL,
-            comment TEXT,
-            created_at DATETIME,
-            PRIMARY KEY (id)
-        )
-        """)
-
-        # --- Крок 3: Створюємо нову таблицю 'in_transit_order' з правильною структурою ---
-        print("Створення нової таблиці 'in_transit_order'...")
-        cursor.execute("""
-        CREATE TABLE in_transit_order (
-            id INTEGER NOT NULL,
-            invoice_id INTEGER NOT NULL,
-            product_id INTEGER NOT NULL,
-            quantity INTEGER NOT NULL,
-            created_at DATETIME,
-            PRIMARY KEY (id),
-            FOREIGN KEY(invoice_id) REFERENCES in_transit_invoice (id),
-            FOREIGN KEY(product_id) REFERENCES product (id)
-        )
-        """)
+        # Додаємо нову колонку 'cost_price' до таблиці 'in_transit_order'
+        print("Спроба додати колонку 'cost_price' до таблиці 'in_transit_order'...")
+        cursor.execute("ALTER TABLE in_transit_order ADD COLUMN cost_price FLOAT")
 
         conn.commit()
-        print("\nУспіх! Структуру таблиць 'in_transit_invoice' та 'in_transit_order' оновлено.")
-        print("Будь ласка, видаліть цей скрипт (migrate_db_2.py) і запустіть основний додаток.")
+        print("Успіх! Колонку 'cost_price' було успішно додано.")
 
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" in str(e):
+            print("Інформація: Колонка 'cost_price' вже існує в таблиці.")
+        else:
+            print(f"Сталася помилка SQLite: {e}")
     except Exception as e:
         print(f"Сталася непередбачена помилка: {e}")
     finally:

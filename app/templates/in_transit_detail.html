@@ -1,55 +1,200 @@
 {% extends "layout.html" %}
-{% block title %}Накладна в дорозі №{{ invoice.id }}{% endblock %}
+{% block title %}Товар в дорозі №{{ invoice.id }}{% endblock %}
 
 {% block content %}
-<h1>Накладна №{{ invoice.id }} від {{ invoice.invoice_date.strftime('%d.%m.%Y') }}</h1>
+<style>
+    .details-form {
+        max-width: 100%; 
+        margin-bottom: 30px;
+        padding: 20px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+    }
+    .top-controls {
+        margin: 20px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    .form-row {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+    }
+    .form-row .form-group {
+        flex: 1; 
+    }
+    .form-row .form-group.comment-group {
+        flex: 2;
+    }
+    .product-search-form {
+        display: flex; gap: 10px; margin: 20px 0;
+    }
+    .product-search-form input { flex-grow: 1; }
+</style>
 
-<div style="display: flex; gap: 40px; margin-top: 20px;">
-    <div style="flex: 1;">
-        <h3>Деталі накладної</h3>
-        <form method="POST">
-            <div class="form-group">
-                <label for="invoice_date">Дата накладної</label>
-                <input type="date" name="invoice_date" value="{{ invoice.invoice_date.strftime('%Y-%m-%d') }}" required>
-            </div>
-            <div class="form-group">
-                <label for="invoice_number">Номер накладної</label>
-                <input type="text" name="invoice_number" value="{{ invoice.invoice_number or '' }}">
-            </div>
-            <div class="form-group">
-                <label for="comment">Коментар</label>
-                <textarea name="comment" style="height: 80px;">{{ invoice.comment or '' }}</textarea>
-            </div>
-            <button type="submit" class="button">Зберегти зміни</button>
-            <a href="{{ url_for('main.in_transit_view') }}" class="button button-secondary">До списку накладних</a>
-        </form>
-        <form method="POST" action="{{ url_for('main.delete_in_transit_invoice', invoice_id=invoice.id) }}" onsubmit="return confirm('Ви впевнені? Ця дія видалить накладну та всі пов\'язані з нею товари зі списку \'в дорозі\'.');" style="margin-top: 20px;">
+<h1>Товар в дорозі №{{ invoice.id }} від {{ invoice.invoice_date.strftime('%d.%m.%Y') }}</h1>
+
+<div class="top-controls">
+    <div>
+        <a href="{{ url_for('main.in_transit_view') }}" class="button button-secondary">&larr; До списку накладних</a>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <button type="button" class="button" onclick="submitInvoiceChanges()">Зберегти зміни</button>
+        <form method="POST" action="{{ url_for('main.delete_in_transit_invoice', invoice_id=invoice.id) }}" onsubmit="return confirm('Ви впевнені? Ця дія видалить всю накладну та всі пов\'язані з нею товари зі списку \'в дорозі\'.');" style="margin:0;">
             <button type="submit" class="button-danger">Видалити накладну</button>
         </form>
     </div>
+</div>
 
-    <div style="flex: 2;">
-        <h3>Товари в накладній</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>SKU</th>
-                    <th>Назва товару</th>
-                    <th style="text-align: center;">Кількість</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in invoice.items %}
-                <tr>
-                    <td><span>{{ item.product.sku }}</span></td>
-                    <td>{{ item.product.name }}</td>
-                    <td style="text-align: center;">{{ item.quantity }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="3" style="text-align: center;">В цій накладній немає товарів.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="details-form">
+    <h3>Деталі накладної</h3>
+    <div id="detailsForm">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="invoice_date">Дата накладної</label>
+                <input type="date" id="invoice_date" value="{{ invoice.invoice_date.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="form-group">
+                <label for="invoice_number">Номер накладної</label>
+                <input type="text" id="invoice_number" value="{{ invoice.invoice_number or '' }}">
+            </div>
+            <div class="form-group comment-group">
+                <label for="comment">Коментар</label>
+                <textarea id="comment" style="height: 38px; resize: vertical;">{{ invoice.comment or '' }}</textarea>
+            </div>
+        </div>
     </div>
 </div>
+
+<hr>
+<h3>Товари в накладній</h3>
+
+<div class="product-search-form">
+    <input type="text" id="sku_search" placeholder="Введіть SKU товару для додавання...">
+    <button type="button" class="button" onclick="findProductBySku()">Додати товар</button>
+</div>
+
+<table id="invoiceItemsTable">
+    <thead>
+        <tr>
+            <th style="width: 5%; text-align: center;">#</th>
+            <th>SKU</th>
+            <th>Назва товару</th>
+            <th style="text-align: center;">Собівартість</th>
+            <th style="width: 120px; text-align: center;">Кількість</th>
+            <th style="width: 5%; text-align: center;">Дії</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in invoice.items.all() | sort(attribute='product.name', key=natural_sort_key) %}
+        <tr data-item-id="{{ item.id }}" data-product-id="{{ item.product.id }}">
+            <td style="text-align: center;">{{ loop.index }}</td>
+            <td><span>{{ item.product.sku }}</span></td>
+            <td>{{ item.product.name }}</td>
+            <td style="text-align: right;">{{ "%.2f"|format(item.cost_price) if item.cost_price is not none else "0.00" }}</td>
+            <td style="text-align: center;">
+                <input type="number" class="quantity-input" value="{{ item.quantity }}" min="1" required style="width: 80px;">
+            </td>
+            <td style="text-align: center;">
+                <button class="button-danger" title="Видалити позицію" onclick="this.closest('tr').remove()">X</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const skuSearchInput = document.getElementById('sku_search');
+    const itemsTableBody = document.querySelector('#invoiceItemsTable tbody');
+
+    function addProductToTable(product) {
+        if (document.querySelector(`tr[data-product-id="${product.id}"]`)) {
+            showToast('Цей товар вже є у накладній.', 'warning');
+            return;
+        }
+
+        const newRow = `
+            <tr data-item-id="new" data-product-id="${product.id}">
+                <td style="text-align: center;">*</td>
+                <td><span>${product.sku}</span></td>
+                <td>${product.name}</td>
+                <td style="text-align: right;">${parseFloat(product.vendor_price || 0).toFixed(2)}</td>
+                <td style="text-align: center;">
+                    <input type="number" class="quantity-input" value="1" min="1" required style="width: 80px;">
+                </td>
+                <td style="text-align: center;">
+                    <button class="button-danger" title="Видалити позицію" onclick="this.closest('tr').remove()">X</button>
+                </td>
+            </tr>`;
+        itemsTableBody.insertAdjacentHTML('beforeend', newRow);
+        skuSearchInput.value = '';
+    }
+
+    async function findProductBySku() {
+        const sku = skuSearchInput.value.trim();
+        if (!sku) return;
+
+        try {
+            const response = await fetch(`/api/product-search?sku=${sku}`);
+            const data = await response.json();
+            if (response.ok) {
+                addProductToTable(data);
+            } else {
+                showToast(data.error || 'Товар не знайдено', 'error');
+            }
+        } catch (error) {
+            showToast('Помилка мережі.', 'error');
+        }
+    }
+    
+    skuSearchInput.addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            findProductBySku();
+        }
+    });
+
+    async function submitInvoiceChanges() {
+        const items = [];
+        document.querySelectorAll('#invoiceItemsTable tbody tr').forEach(row => {
+            items.push({
+                item_id: row.dataset.itemId,
+                product_id: row.dataset.productId,
+                quantity: row.querySelector('.quantity-input').value
+            });
+        });
+
+        const payload = {
+            invoice_date: document.getElementById('invoice_date').value,
+            invoice_number: document.getElementById('invoice_number').value,
+            comment: document.getElementById('comment').value,
+            items: items
+        };
+
+        try {
+            const response = await fetch("{{ url_for('main.in_transit_detail_view', invoice_id=invoice.id) }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                showToast('Накладну успішно оновлено!', 'success');
+                window.location.href = result.redirect_url;
+            } else {
+                showToast(result.message || 'Сталася помилка збереження', 'error');
+            }
+        } catch (error) {
+            showToast('Помилка мережі при збереженні накладної.', 'error');
+        }
+    }
+</script>
 {% endblock %}

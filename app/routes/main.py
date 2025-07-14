@@ -9,7 +9,7 @@ from datetime import datetime # <-- ДОДАНО ЦЕЙ ІМПОРТ
 
 from . import bp
 from ..extensions import db # <-- ДОДАНО ЦЕЙ ІМПОРТ
-from ..models import Product, Printer, ColorSetting, InTransitInvoice, InTransitOrder
+from ..models import Product, Printer, ColorSetting, InTransitInvoice, InTransitOrder, Currency # <-- Додайте Currency
 from ..utils import get_pagination_window, natural_sort_key
 
 
@@ -195,17 +195,60 @@ def in_transit_detail_view(invoice_id):
     
     if request.method == 'POST':
         try:
-            invoice.invoice_number = request.form.get('invoice_number')
-            invoice.comment = request.form.get('comment')
-            date_str = request.form.get('invoice_date')
+            data = request.get_json()
+            
+            # Оновлюємо заголовок накладної
+            invoice.invoice_number = data.get('invoice_number')
+            invoice.comment = data.get('comment')
+            date_str = data.get('invoice_date')
             if date_str:
                 invoice.invoice_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+            # Оновлюємо та додаємо товари
+            items_data = data.get('items', [])
+            existing_item_ids = {item.id for item in invoice.items}
             
+            for item_data in items_data:
+                product_id = int(item_data['product_id'])
+                new_quantity = int(item_data['quantity'])
+                item_id = item_data.get('item_id') # Може бути 'new' для нових товарів
+
+                product = Product.query.get(product_id)
+                if not product: continue
+
+                if item_id != 'new':
+                    # Оновлюємо існуючий товар
+                    item_id = int(item_id)
+                    order_item = InTransitOrder.query.get(item_id)
+                    if order_item:
+                        # Коригуємо загальну кількість "в дорозі"
+                        quantity_diff = new_quantity - order_item.quantity
+                        product.in_transit_quantity += quantity_diff
+                        order_item.quantity = new_quantity
+                else:
+                    # Додаємо новий товар до накладної
+                    new_order_item = InTransitOrder(
+                        invoice_id=invoice.id,
+                        product_id=product_id,
+                        quantity=new_quantity
+                    )
+                    product.in_transit_quantity += new_quantity
+                    db.session.add(new_order_item)
+
             db.session.commit()
-            flash('Дані накладної оновлено.', 'success')
-            return redirect(url_for('main.in_transit_detail_view', invoice_id=invoice.id))
+            flash('Накладну успішно оновлено.', 'success')
+            return jsonify({'status': 'success', 'redirect_url': url_for('main.in_transit_detail_view', invoice_id=invoice.id)})
+
         except Exception as e:
             db.session.rollback()
-            flash(f'Помилка оновлення: {e}', 'danger')
+            current_app.logger.error(f"Invoice update error: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': f'Помилка оновлення: {e}'}), 500
 
     return render_template('in_transit_detail.html', invoice=invoice)
+
+@bp.route('/in-transit/new')
+def in_transit_new():
+    # --- ПОЧАТОК ЗМІН: Завантажуємо валюти ---
+    available_currencies = Currency.query.all()
+    # --- КІНЕЦЬ ЗМІН ---
+    return render_template('in_transit_new.html', available_currencies=available_currencies)

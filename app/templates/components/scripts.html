@@ -94,6 +94,69 @@
         }
     }
 
+    // --- ПОЧАТОК ЗМІН: Додано відсутні функції ---
+    function openInTransitModal(productIds) {
+        if (!inTransitModal) return;
+        const tableBody = document.getElementById('inTransitProductsTable').querySelector('tbody');
+        tableBody.innerHTML = ''; 
+
+        productIds.forEach(id => {
+            const originalRow = document.querySelector(`.product-checkbox[value="${id}"]`).closest('tr');
+            const sku = originalRow.dataset.sku;
+            const name = originalRow.dataset.name;
+
+            const newRow = `
+                <tr data-id="${id}">
+                    <td>${sku}</td>
+                    <td>${name}</td>
+                    <td><input type="number" class="in-transit-quantity" value="1" min="1" style="width: 100px;" required></td>
+                </tr>`;
+            tableBody.insertAdjacentHTML('beforeend', newRow);
+        });
+
+        document.getElementById('invoice_date').valueAsDate = new Date();
+        inTransitModal.style.display = 'flex';
+    }
+
+    async function submitInTransitForm(event) {
+        event.preventDefault();
+        
+        const products = [];
+        document.querySelectorAll('#inTransitProductsTable tbody tr').forEach(row => {
+            products.push({
+                id: row.dataset.id,
+                quantity: row.querySelector('.in-transit-quantity').value
+            });
+        });
+
+        const payload = {
+            products: products,
+            invoice_date: document.getElementById('invoice_date').value,
+            invoice_number: document.getElementById('invoice_number').value,
+            comment: document.getElementById('comment').value
+        };
+
+        try {
+            const response = await fetch("{{ url_for('main.create_in_transit_invoice') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                showToast(result.message, 'success');
+                closeInTransitModal();
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                showToast(result.message || 'Сталася помилка', 'error');
+            }
+        } catch (error) {
+            showToast('Помилка мережі при створенні накладної.', 'error');
+        }
+    }
+    // --- КІНЕЦЬ ЗМІН ---
+
     function closeGoodsReceiptModal() { if (goodsReceiptModal) { goodsReceiptModal.style.display = 'none'; } }
     
     async function submitSinglePrintJob(event) { 
@@ -267,27 +330,40 @@
         
         function toggleBulkActions() {
             const anyChecked = document.querySelectorAll('.product-checkbox:checked').length > 0;
-            if(bulkActionsContainer) bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
+            bulkActionsContainer.style.display = anyChecked ? 'flex' : 'none';
         }
 
-        if(selectAllCheckbox) selectAllCheckbox.addEventListener('change', (e) => { productCheckboxes.forEach(cb => cb.checked = e.target.checked); toggleBulkActions(); });
+        selectAllCheckbox.addEventListener('change', (e) => { productCheckboxes.forEach(cb => cb.checked = e.target.checked); toggleBulkActions(); });
         productCheckboxes.forEach(cb => cb.addEventListener('change', toggleBulkActions));
-        if(bulkActionSelect) bulkActionSelect.addEventListener('change', () => { bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText; });
+        bulkActionSelect.addEventListener('change', () => { bulkActionButton.textContent = bulkActionSelect.options[bulkActionSelect.selectedIndex].dataset.btnText; });
         
-        if(bulkActionForm) bulkActionForm.addEventListener('submit', (e) => {
-            const selectedAction = bulkActionSelect.value;
-            const displayCurrencyInput = document.getElementById('displayCurrencyInput');
-            if (displayCurrencyInput) { displayCurrencyInput.value = document.getElementById('currencySelector').value; }
-
-            if (selectedAction === 'print' || selectedAction === 'export_goods_receipt') {
-                e.preventDefault();
+        // --- ПОЧАТОК ЗМІН: Оновлений обробник масових дій ---
+        if (bulkActionButton) {
+            bulkActionButton.addEventListener('click', (e) => {
+                e.preventDefault(); 
+                const bulkActionSelect = document.getElementById('bulkActionSelect');
+                const selectedAction = bulkActionSelect.value;
                 const selectedIds = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => cb.value);
-                if (selectedIds.length > 0) {
-                    if (selectedAction === 'print') { openBulkPrintModal(selectedIds); } 
-                    else if (selectedAction === 'export_goods_receipt') { openGoodsReceiptModal(selectedIds); }
-                } else { showToast('Необхідно обрати хоча б один товар', 'error'); }
-            }
-        });
+
+                if (selectedIds.length === 0) {
+                    showToast('Необхідно обрати хоча б один товар', 'error');
+                    return;
+                }
+
+                switch (selectedAction) {
+                    case 'print':
+                        openBulkPrintModal(selectedIds);
+                        break;
+                    case 'export_goods_receipt':
+                        openGoodsReceiptModal(selectedIds);
+                        break;
+                    default:
+                        document.getElementById('bulkActionForm').submit();
+                        break;
+                }
+            });
+        }
+        // --- КІНЕЦЬ ЗМІН ---
 
         const mainSearchForm = document.getElementById('mainSearchForm');
         if (mainSearchForm) {
@@ -324,7 +400,7 @@
             searchInput.addEventListener('keydown', function(event) { if (event.key === 'Enter') { event.preventDefault(); document.getElementById('mainSearchForm').submit(); } });
             setInterval(() => {
                 const activeElement = document.activeElement;
-                const modals = [printModalOverlay, imageModalOverlay, document.getElementById('testPrintModalOverlay'), goodsReceiptModal];
+                const modals = [printModalOverlay, imageModalOverlay, document.getElementById('testPrintModalOverlay'), goodsReceiptModal, document.getElementById('inTransitModal')];
                 const isModalOpen = modals.some(modal => modal && window.getComputedStyle(modal).display === 'flex');
                 if (!isModalOpen && activeElement !== searchInput && !['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName)) { searchInput.focus(); }
             }, 30000);
@@ -343,11 +419,6 @@
             cb.addEventListener('change', () => {
                 updateCategorySelectText();
                 checkAndLoadDynamicFilters();
-                // --- ПОЧАТОК ЗМІН ---
-                if (expanded) {
-                    toggleCategoryCheckboxes();
-                }
-                // --- КІНЕЦЬ ЗМІН ---
                 document.getElementById('mainSearchForm').submit();
             });
         });
@@ -396,103 +467,4 @@
             }
         }
     });
-
-    const inTransitModal = document.getElementById('inTransitModal');
-    
-    function openInTransitModal(productIds) {
-        if (!inTransitModal) return;
-        const tableBody = document.getElementById('inTransitProductsTable').querySelector('tbody');
-        tableBody.innerHTML = ''; // Очищуємо таблицю
-
-        productIds.forEach(id => {
-            const originalRow = document.querySelector(`.product-checkbox[value="${id}"]`).closest('tr');
-            const sku = originalRow.dataset.sku;
-            const name = originalRow.dataset.name;
-
-            const newRow = `
-                <tr data-id="${id}">
-                    <td>${sku}</td>
-                    <td>${name}</td>
-                    <td><input type="number" class="in-transit-quantity" value="1" min="1" style="width: 100px;" required></td>
-                </tr>`;
-            tableBody.insertAdjacentHTML('beforeend', newRow);
-        });
-
-        // Встановлюємо сьогоднішню дату за замовчуванням
-        document.getElementById('invoice_date').valueAsDate = new Date();
-        inTransitModal.style.display = 'flex';
-    }
-
-    function closeInTransitModal() {
-        if (inTransitModal) {
-            inTransitModal.style.display = 'none';
-        }
-    }
-
-    async function submitInTransitForm(event) {
-        event.preventDefault();
-        
-        const products = [];
-        document.querySelectorAll('#inTransitProductsTable tbody tr').forEach(row => {
-            products.push({
-                id: row.dataset.id,
-                quantity: row.querySelector('.in-transit-quantity').value
-            });
-        });
-
-        const payload = {
-            products: products,
-            invoice_date: document.getElementById('invoice_date').value,
-            invoice_number: document.getElementById('invoice_number').value,
-            comment: document.getElementById('comment').value
-        };
-
-        try {
-            const response = await fetch("{{ url_for('main.create_in_transit_invoice') }}", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const result = await response.json();
-
-            if (response.ok) {
-                showToast(result.message, 'success');
-                closeInTransitModal();
-                // Опціонально: оновити сторінку, щоб побачити зміни
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                showToast(result.message || 'Сталася помилка', 'error');
-            }
-        } catch (error) {
-            showToast('Помилка мережі при створенні накладної.', 'error');
-        }
-    }
-
-    if (inTransitModal) {
-        inTransitModal.addEventListener('click', e => {
-            if (e.target === inTransitModal) {
-                closeInTransitModal();
-            }
-        });
-    }
-
-    // Оновлюємо обробник масових дій
-    document.addEventListener('DOMContentLoaded', () => {
-        const bulkActionForm = document.getElementById('bulkActionForm');
-        if (bulkActionForm) {
-            bulkActionForm.addEventListener('submit', (e) => {
-                const selectedAction = document.getElementById('bulkActionSelect').value;
-                if (selectedAction === 'in_transit') {
-                    e.preventDefault();
-                    const selectedIds = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => cb.value);
-                    if (selectedIds.length > 0) {
-                        openInTransitModal(selectedIds);
-                    } else {
-                        showToast('Необхідно обрати хоча б один товар', 'error');
-                    }
-                }
-            });
-        }
-    });
-
 </script>

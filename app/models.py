@@ -38,12 +38,15 @@ class InTransitInvoice(db.Model):
     comment = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     
+    # --- ПОЧАТОК ЗМІН: Додано поле для валюти ---
+    currency_code = db.Column(db.String(3), nullable=False, default='UAH')
+    # --- КІНЕЦЬ ЗМІН ---
+    
     items = db.relationship('InTransitOrder', backref='invoice', lazy='dynamic', cascade="all, delete-orphan")
 
     def get_total_quantity(self):
         return sum(item.quantity for item in self.items)
     
-    # Додаємо параметр для уникнення помилки перевизначення
     __table_args__ = {'extend_existing': True}
 
 class InTransitOrder(db.Model):
@@ -55,9 +58,12 @@ class InTransitOrder(db.Model):
     
     quantity = db.Column(db.Integer, nullable=False)
     
+    # --- ПОЧАТОК ЗМІН ---
+    cost_price = db.Column(db.Float, nullable=True) # Собівартість на момент створення замовлення
+    # --- КІНЕЦЬ ЗМІН ---
+    
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    # Додаємо параметр для уникнення помилки перевизначення
     __table_args__ = {'extend_existing': True}
 
 class Printer(db.Model):

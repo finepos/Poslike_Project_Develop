@@ -2,17 +2,16 @@
 import os
 from datetime import datetime, date
 from io import BytesIO
-# ▼▼▼ Додано jsonify для відповіді на AJAX-запити ▼▼▼
 from flask import render_template, request, redirect, url_for, flash, send_file, current_app, jsonify
 from sqlalchemy import case
 from fpdf import FPDF
 from openpyxl import Workbook
 from dateutil.relativedelta import relativedelta
+import json
 
 from . import bp
 from ..extensions import db
-from ..models import Product, InTransitOrder, Currency
-
+from ..models import Product, InTransitInvoice, InTransitOrder, Currency
 
 @bp.route('/update-minimum-stock', methods=['POST'])
 def update_minimum_stock():
@@ -45,6 +44,76 @@ def add_in_transit_form(product_id):
     product = Product.query.get_or_404(product_id)
     return render_template('add_in_transit_form.html', product=product)
 
+# --- ПОЧАТОК ЗМІН: Нові функції для роботи з накладними ---
+
+@bp.route('/create-in-transit-invoice', methods=['POST'])
+def create_in_transit_invoice():
+    try:
+        data = request.get_json()
+        products_data = data.get('products')
+        invoice_number = data.get('invoice_number')
+        invoice_date_str = data.get('invoice_date')
+        comment = data.get('comment')
+
+        if not products_data:
+            return jsonify({'status': 'error', 'message': 'Не обрано жодного товару.'}), 400
+
+        invoice_date = datetime.strptime(invoice_date_str, '%Y-%m-%d').date() if invoice_date_str else date.today()
+
+        new_invoice = InTransitInvoice(
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
+            comment=comment
+        )
+        db.session.add(new_invoice)
+        db.session.flush() # Отримуємо ID накладної перед коммітом
+
+        for item in products_data:
+            product = Product.query.get(item['id'])
+            quantity = int(item['quantity'])
+            if product and quantity > 0:
+                # Додаємо товар до деталей накладної
+                new_order_item = InTransitOrder(
+                    invoice_id=new_invoice.id,
+                    product_id=product.id,
+                    quantity=quantity
+                )
+                db.session.add(new_order_item)
+                
+                # Оновлюємо загальну кількість "в дорозі" для товару
+                product.in_transit_quantity += quantity
+        
+        db.session.commit()
+        flash(f"Накладну №{new_invoice.id} успішно створено.", "success")
+        return jsonify({'status': 'success', 'message': 'Накладну створено.'})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating in-transit invoice: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': f'Помилка сервера: {e}'}), 500
+
+@bp.route('/in-transit/invoice/delete/<int:invoice_id>', methods=['POST'])
+def delete_in_transit_invoice(invoice_id):
+    invoice = InTransitInvoice.query.get_or_404(invoice_id)
+    try:
+        # Віднімаємо кількість товарів перед видаленням
+        for item in invoice.items:
+            product = item.product
+            if product.in_transit_quantity >= item.quantity:
+                product.in_transit_quantity -= item.quantity
+            else:
+                product.in_transit_quantity = 0
+
+        db.session.delete(invoice)
+        db.session.commit()
+        flash(f"Накладну №{invoice.id} та всі пов'язані товари видалено.", 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Помилка під час видалення накладної: {e}", 'danger')
+        
+    return redirect(url_for('main.in_transit_view'))
+
+# --- КІНЕЦЬ ЗМІН ---
 
 @bp.route('/add-in-transit', methods=['POST'])
 def add_in_transit():
@@ -208,3 +277,26 @@ def export_goods_receipt():
     buffer.seek(0)
     filename = f"goods_receipt_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+# --- ПОЧАТОК ЗМІН: Нова функція для видалення ---
+@bp.route('/delete-in-transit/<int:order_id>', methods=['POST'])
+def delete_in_transit_order(order_id):
+    order_to_delete = InTransitOrder.query.get_or_404(order_id)
+    product = order_to_delete.product
+    
+    # Віднімаємо кількість з товару, що "в дорозі"
+    if product.in_transit_quantity >= order_to_delete.quantity:
+        product.in_transit_quantity -= order_to_delete.quantity
+    else:
+        product.in_transit_quantity = 0
+
+    try:
+        db.session.delete(order_to_delete)
+        db.session.commit()
+        flash(f"Замовлення для товару '{product.name}' успішно видалено.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Помилка під час видалення замовлення: {e}", "danger")
+        
+    return redirect(request.referrer or url_for('main.in_transit_view'))
+# --- КІНЕЦЬ ЗМІН ---

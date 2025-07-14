@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+{% block title %}Додати товар в дорозі: {{ product.name }}{% endblock %}
+
+{% block content %}
+<style>
+    .form-container {
+        max-width: 600px;
+        margin: 40px auto;
+        padding: 25px;
+        background-color: #fff;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+</style>
+
+<div class="form-container">
+    <h1>Додати товар в дорозі</h1>
+    <h3 style="color: #333;">{{ product.name }}</h3>
+    <p><strong>SKU:</strong> {{ product.sku }}</p>
+    
+    <form method="POST" action="{{ url_for('main.add_in_transit') }}">
+        <input type="hidden" name="product_id" value="{{ product.id }}">
+        
+        <div class="form-group">
+            <label for="quantity">Кількість:</label>
+            <input type="number" name="quantity" id="quantity" class="form-control" required min="1">
+        </div>
+        
+        <div class="form-group">
+            <label for="order_number">Номер замовлення (необов'язково):</label>
+            <input type="text" name="order_number" id="order_number" class="form-control">
+        </div>
+        
+        <div class="form-group">
+            <label for="arrival_date">Очікувана дата прибуття (необов'язково):</label>
+            <input type="date" name="arrival_date" id="arrival_date" class="form-control">
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button type="submit" class="button">Додати</button>
+            <a href="{{ request.referrer or url_for('main.index') }}" class="button button-secondary">Скасувати</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

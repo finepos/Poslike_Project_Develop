@@ -22,9 +22,7 @@ class Product(db.Model):
     sales = db.relationship('Sale', backref='product', lazy=True, cascade="all, delete-orphan")
     in_transit_orders = db.relationship('InTransitOrder', backref='product', lazy=True, cascade="all, delete-orphan")
 
-    # ▼▼▼ ДОДАНО ЦЕЙ РЯДОК ДЛЯ ВИРІШЕННЯ ПОМИЛКИ ▼▼▼
     __table_args__ = {'extend_existing': True}
-
 
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -32,13 +30,35 @@ class Sale(db.Model):
     quantity_sold = db.Column(db.Integer, nullable=False)
     sale_timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-class InTransitOrder(db.Model):
+class InTransitInvoice(db.Model):
+    """Модель для заголовка накладної 'в дорозі'."""
     id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
-    order_number = db.Column(db.String(100))
-    arrival_date = db.Column(db.Date)
+    invoice_number = db.Column(db.String(100), nullable=True)
+    invoice_date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    comment = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    items = db.relationship('InTransitOrder', backref='invoice', lazy='dynamic', cascade="all, delete-orphan")
+
+    def get_total_quantity(self):
+        return sum(item.quantity for item in self.items)
+    
+    # Додаємо параметр для уникнення помилки перевизначення
+    __table_args__ = {'extend_existing': True}
+
+class InTransitOrder(db.Model):
+    """Модель для окремого товару в накладній 'в дорозі'."""
+    id = db.Column(db.Integer, primary_key=True)
+    
+    invoice_id = db.Column(db.Integer, db.ForeignKey('in_transit_invoice.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    
+    quantity = db.Column(db.Integer, nullable=False)
+    
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Додаємо параметр для уникнення помилки перевизначення
+    __table_args__ = {'extend_existing': True}
 
 class Printer(db.Model):
     id = db.Column(db.Integer, primary_key=True)

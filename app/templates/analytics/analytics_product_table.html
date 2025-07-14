@@ -52,7 +52,6 @@
                 </td>
                 <td style="min-width: 210px;">
                     <div style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center;">
-                        <a href="{{ url_for('main.add_in_transit_form', product_id=product.id) }}" class="button" title="Додати в дорозі">+</a>
                         <button type="button" class="button button-secondary" onclick="openPrintModal(this)" title="Друк етикетки">Друк</button>
                         {% if item.product_url %}<a href="{{ item.product_url }}" target="_blank" class="button" style="background-color: #17a2b8;" title="Відкрити на сайті">Сайт</a>{% endif %}
                         {% if item.product_picture %}

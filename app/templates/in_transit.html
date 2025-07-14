@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block title %}Накладні в дорозі{% endblock %}
+
+{% block content %}
+<h1>Накладні "В дорозі"</h1>
+
+<div style="margin: 20px 0;">
+    <form method="GET" action="{{ url_for('main.in_transit_view') }}" style="display: flex; gap: 10px;">
+        <input type="search" name="search" placeholder="Пошук по номеру або коментарю..." value="{{ search_term or '' }}" style="width: 300px;">
+        <button type="submit" class="button">Шукати</button>
+        <a href="{{ url_for('main.in_transit_view') }}" class="button button-secondary">Очистити</a>
+    </form>
+</div>
+
+{% if invoices %}
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 8%;">ID Накладної</th>
+                <th style="width: 12%;">Дата</th>
+                <th style="width: 15%;">Номер накладної</th>
+                <th>Коментар</th>
+                <th style="width: 10%; text-align: center;">К-ть позицій</th>
+                <th style="width: 20%; text-align: center;">Дії</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for invoice in invoices %}
+                <tr>
+                    <td>{{ invoice.id }}</td>
+                    <td>{{ invoice.invoice_date.strftime('%d.%m.%Y') }}</td>
+                    <td>{{ invoice.invoice_number or 'N/A' }}</td>
+                    <td>{{ invoice.comment or '. . .' }}</td>
+                    <td style="text-align: center;">{{ invoice.items.count() }}</td>
+                    <td style="text-align: center;">
+                        <a href="{{ url_for('main.in_transit_detail_view', invoice_id=invoice.id) }}" class="button">Переглянути / Редагувати</a>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% include 'components/pagination.html' %}
+    
+{% else %}
+    <p style="text-align: center; margin-top: 30px;">Накладні "в дорозі" не знайдено.</p>
+{% endif %}
+{% endblock %}

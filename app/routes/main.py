@@ -2,16 +2,20 @@
 import json
 import re
 from math import ceil
-from flask import render_template, request
-from sqlalchemy import or_
+from flask import render_template, request, flash, redirect, url_for # <-- Додано flash та redirect
+from sqlalchemy import or_, func
+from sqlalchemy.orm import joinedload
+from datetime import datetime # <-- ДОДАНО ЦЕЙ ІМПОРТ
 
 from . import bp
-from ..models import Product, Printer, ColorSetting
+from ..extensions import db # <-- ДОДАНО ЦЕЙ ІМПОРТ
+from ..models import Product, Printer, ColorSetting, InTransitInvoice, InTransitOrder
 from ..utils import get_pagination_window, natural_sort_key
 
 
 @bp.route('/')
 def index():
+    # ... (код цієї функції залишається без змін) ...
     page = request.args.get('page', 1, type=int)
     show_all = request.args.get('show_all')
     search_sku = request.args.get('search_sku', '')
@@ -49,7 +53,7 @@ def index():
         
         if category_param_sets and all(s == category_param_sets[0] for s in category_param_sets):
             show_param_filters = True
-            param_name_map = {re.sub(r'[\s/]+', '_', name): name for name in category_param_sets[0]}
+            param_name_map = {re.sub(r'[\s/]+', '_', name): name for name in params_for_this_cat}
             for key, value in request.args.items():
                 if key.startswith('param_') and value:
                     original_name = param_name_map.get(key[len('param_'):])
@@ -158,5 +162,50 @@ def index():
                            sort_by=sort_by, sort_order=sort_order,
                            is_exact_sku_search=is_exact_sku_search,
                            DEFAULT_PER_PAGE=DEFAULT_PER_PAGE,
-                           # ▼▼▼ ДОДАНО ЦЕЙ РЯДОК ▼▼▼
                            endpoint=request.endpoint)
+
+
+@bp.route('/in-transit')
+def in_transit_view():
+    page = request.args.get('page', 1, type=int)
+    
+    query = InTransitInvoice.query.order_by(InTransitInvoice.invoice_date.desc(), InTransitInvoice.id.desc())
+    
+    search_term = request.args.get('search', '')
+    if search_term:
+        query = query.filter(
+            or_(
+                InTransitInvoice.invoice_number.ilike(f'%{search_term}%'),
+                InTransitInvoice.comment.ilike(f'%{search_term}%')
+            )
+        )
+
+    pagination = query.paginate(page=page, per_page=50, error_out=False)
+    invoices = pagination.items
+
+    return render_template('in_transit.html', 
+                           invoices=invoices, 
+                           pagination=pagination,
+                           search_term=search_term)
+
+
+@bp.route('/in-transit/<int:invoice_id>', methods=['GET', 'POST'])
+def in_transit_detail_view(invoice_id):
+    invoice = InTransitInvoice.query.get_or_404(invoice_id)
+    
+    if request.method == 'POST':
+        try:
+            invoice.invoice_number = request.form.get('invoice_number')
+            invoice.comment = request.form.get('comment')
+            date_str = request.form.get('invoice_date')
+            if date_str:
+                invoice.invoice_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            
+            db.session.commit()
+            flash('Дані накладної оновлено.', 'success')
+            return redirect(url_for('main.in_transit_detail_view', invoice_id=invoice.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Помилка оновлення: {e}', 'danger')
+
+    return render_template('in_transit_detail.html', invoice=invoice)

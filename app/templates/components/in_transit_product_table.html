@@ -1,0 +1,40 @@
+<table>
+    <thead>
+        <tr>
+            <th style="width: 3%; text-align: center;"><input type="checkbox" id="selectAllCheckbox" title="Обрати всі"></th>
+            <th style="width: 12%;">SKU</th>
+            <th style="width: 35%;">Назва товару</th>
+            <th style="text-align: center;">К-ть в дорозі</th>
+            <th style="text-align: center;">Номер замовлення</th>
+            <th style="text-align: center;">Очікувана дата</th>
+            <th style="width: 17%; text-align: center;">Дії</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in orders %}
+            {% set order = item.order %}
+            {% set product = item.product %}
+            <tr data-sku="{{ product.sku }}" data-name="{{ product.name }}">
+                <td style="text-align: center;"><input type="checkbox" name="product_ids" value="{{ product.id }}" class="product-checkbox"></td>
+                <td><span>{{ product.sku }}</span></td>
+                <td>{{ product.name }}</td>
+                <td style="text-align: center; background-color: #fff3cd;"><b>{{ order.quantity }}</b></td>
+                <td style="text-align: center;">{{ order.order_number or 'N/A' }}</td>
+                <td style="text-align: center;">{{ order.arrival_date.strftime('%d.%m.%Y') if order.arrival_date else 'N/A' }}</td>
+                <td style="text-align: center;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center; justify-content: center;">
+                        {% if item.product_url %}<a href="{{ item.product_url }}" target="_blank" class="button" style="background-color: #17a2b8;" title="Відкрити на сайті">Сайт</a>{% endif %}
+                        {% if item.product_picture %}
+                        <button type="button" class="button" style="background-color: #28a745;" onclick="showProductImage('{{ item.product_picture }}')" title="Показати фото">Фото</button>
+                        {% endif %}
+                        <form method="POST" action="{{ url_for('main.delete_in_transit_order', order_id=order.id) }}" onsubmit="return confirm('Ви впевнені, що хочете видалити це замовлення? Кількість буде списана з товарів в дорозі.');" style="margin:0;">
+                            <button type="submit" class="button-danger" title="Видалити замовлення" onclick="event.stopPropagation();">X</button>
+                            </form>
+                    </div>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="7" style="text-align:center;">Товарів в дорозі за вашим запитом не знайдено.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>

@@ -1,38 +1,56 @@
 import sqlite3
 import os
 
-# Шлях до вашої бази даних
-db_path = os.path.join('instance', 'analytics.db')
+# Шлях до вашої основної бази даних
+db_path = os.path.join('instance', 'stock_control.db')
 
-# Перевіряємо, чи існує файл бази даних
 if not os.path.exists(db_path):
     print(f"Помилка: Файл бази даних не знайдено за шляхом: {db_path}")
 else:
     try:
-        # Підключаємося до бази даних
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
+        print("Підключено до бази даних stock_control.db.")
 
-        print("Підключено до бази даних analytics.db.")
+        # --- Крок 1: Видаляємо стару версію таблиці, оскільки її структура змінилася ---
+        print("Видалення старої таблиці 'in_transit_order' (якщо існує)...")
+        cursor.execute("DROP TABLE IF EXISTS in_transit_order")
+        
+        # --- Крок 2: Створюємо нову таблицю 'in_transit_invoice' (якщо не існує) ---
+        print("Створення таблиці 'in_transit_invoice'...")
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS in_transit_invoice (
+            id INTEGER NOT NULL,
+            invoice_number VARCHAR(100),
+            invoice_date DATE NOT NULL,
+            comment TEXT,
+            created_at DATETIME,
+            PRIMARY KEY (id)
+        )
+        """)
 
-        # Додаємо нову колонку 'category' до таблиці 'trained_forecast_model'
-        # UNIQUE та NOT NULL додано для відповідності моделі SQLAlchemy
-        cursor.execute("ALTER TABLE trained_forecast_model ADD COLUMN category VARCHAR(255) NOT NULL DEFAULT 'Без категорії'")
+        # --- Крок 3: Створюємо нову таблицю 'in_transit_order' з правильною структурою ---
+        print("Створення нової таблиці 'in_transit_order'...")
+        cursor.execute("""
+        CREATE TABLE in_transit_order (
+            id INTEGER NOT NULL,
+            invoice_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
+            created_at DATETIME,
+            PRIMARY KEY (id),
+            FOREIGN KEY(invoice_id) REFERENCES in_transit_invoice (id),
+            FOREIGN KEY(product_id) REFERENCES product (id)
+        )
+        """)
 
-        # Зберігаємо зміни
         conn.commit()
-        print("Успіх! Колонку 'category' було додано до таблиці 'trained_forecast_model'.")
+        print("\nУспіх! Структуру таблиць 'in_transit_invoice' та 'in_transit_order' оновлено.")
+        print("Будь ласка, видаліть цей скрипт (migrate_db_2.py) і запустіть основний додаток.")
 
-    except sqlite3.OperationalError as e:
-        # Ця помилка виникне, якщо колонка вже існує. Це нормально.
-        if "duplicate column name" in str(e):
-            print("Інформація: Колонка 'category' вже існує в таблиці.")
-        else:
-            print(f"Сталася помилка SQLite: {e}")
     except Exception as e:
         print(f"Сталася непередбачена помилка: {e}")
     finally:
-        # Закриваємо з'єднання
         if 'conn' in locals() and conn:
             conn.close()
             print("З'єднання з базою даних закрито.")

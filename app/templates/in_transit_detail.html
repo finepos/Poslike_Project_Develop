@@ -1,0 +1,55 @@
+{% extends "layout.html" %}
+{% block title %}Накладна в дорозі №{{ invoice.id }}{% endblock %}
+
+{% block content %}
+<h1>Накладна №{{ invoice.id }} від {{ invoice.invoice_date.strftime('%d.%m.%Y') }}</h1>
+
+<div style="display: flex; gap: 40px; margin-top: 20px;">
+    <div style="flex: 1;">
+        <h3>Деталі накладної</h3>
+        <form method="POST">
+            <div class="form-group">
+                <label for="invoice_date">Дата накладної</label>
+                <input type="date" name="invoice_date" value="{{ invoice.invoice_date.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="form-group">
+                <label for="invoice_number">Номер накладної</label>
+                <input type="text" name="invoice_number" value="{{ invoice.invoice_number or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="comment">Коментар</label>
+                <textarea name="comment" style="height: 80px;">{{ invoice.comment or '' }}</textarea>
+            </div>
+            <button type="submit" class="button">Зберегти зміни</button>
+            <a href="{{ url_for('main.in_transit_view') }}" class="button button-secondary">До списку накладних</a>
+        </form>
+        <form method="POST" action="{{ url_for('main.delete_in_transit_invoice', invoice_id=invoice.id) }}" onsubmit="return confirm('Ви впевнені? Ця дія видалить накладну та всі пов\'язані з нею товари зі списку \'в дорозі\'.');" style="margin-top: 20px;">
+            <button type="submit" class="button-danger">Видалити накладну</button>
+        </form>
+    </div>
+
+    <div style="flex: 2;">
+        <h3>Товари в накладній</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>SKU</th>
+                    <th>Назва товару</th>
+                    <th style="text-align: center;">Кількість</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in invoice.items %}
+                <tr>
+                    <td><span>{{ item.product.sku }}</span></td>
+                    <td>{{ item.product.name }}</td>
+                    <td style="text-align: center;">{{ item.quantity }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" style="text-align: center;">В цій накладній немає товарів.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
